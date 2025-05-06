@@ -10,7 +10,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/input"; // Not used in current version, but keep for potential future
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -22,18 +22,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Import AlertDialog components
+} from "@/components/ui/alert-dialog";
 import type { User } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   Loader2,
   ArrowLeft,
-  Paperclip,
-  Mic,
+  Paperclip, // Not used
+  Mic, // Not used
   CornerDownLeft,
-} from "lucide-react"; // Add ArrowLeft
-import { useRouter } from "next/navigation"; // For back navigation
+  Circle, // For presence indicator
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
 import {
   ChatBubble,
@@ -41,7 +42,7 @@ import {
   ChatBubbleTimestamp,
 } from "@/components/ui/chat/chat-bubble";
 import { AnimatePresence, motion } from "framer-motion";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Not used yet
 import { ChatInput } from "@/components/ui/chat/chat-input";
 
 interface Message {
@@ -52,38 +53,42 @@ interface Message {
 }
 
 interface ChatPageProps {
-  params: { chatId: string }; // Get chatId from route params
+  params: { chatId: string };
 }
 
-// The component receives a Promise<ChatPageProps> implicitly
 export default function ChatRoomPage({
   params,
 }: {
   params: Promise<ChatPageProps["params"]>;
 }) {
-  // Use the 'use' hook to resolve the promise
   const resolvedParams = use(params);
-  const { chatId } = resolvedParams; // Destructure chatId from the resolved params
+  const { chatId } = resolvedParams;
 
   const supabase = createClient();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(true); // State for initial message load
-  const [isChatActive, setIsChatActive] = useState(true); // Track if chat is ended
+  const [isLoading, setIsLoading] = useState(true);
+  const [isChatActive, setIsChatActive] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [isSendingMessage, startSendingMessageTransition] = useTransition();
   const [isEndingChat, startEndingChatTransition] = useTransition();
+  const [partnerPresence, setPartnerPresence] = useState<"online" | "offline">(
+    "offline"
+  );
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const presenceChannelRef = useRef<any>(null);
 
-  // Fetch user and initial messages
+  // Fetch user, initial messages, and partner ID
   useEffect(() => {
     const initializeChat = async () => {
       setIsLoading(true);
-      console.log("Initializing chat");
       const {
         data: { user: currentUser },
       } = await supabase.auth.getUser();
@@ -94,7 +99,6 @@ export default function ChatRoomPage({
       }
       setUser(currentUser);
 
-      // Fetch initial messages for this chat
       const { data: initialMessages, error: messagesError } = await supabase
         .from("messages")
         .select("*")
@@ -102,47 +106,53 @@ export default function ChatRoomPage({
         .order("created_at", { ascending: true });
 
       if (messagesError) {
-        console.error("Error fetching messages:", messagesError);
         toast.error("Failed to load chat messages.");
-        setIsChatActive(false); // Assume chat is invalid if messages fail
+        setIsChatActive(false);
       } else {
         setMessages(initialMessages || []);
       }
 
-      // Check if chat is already ended (optional, could rely on realtime)
-      const { data: chatData, error: chatError } = await supabase
+      const { data: chatDetails, error: chatDetailsError } = await supabase
         .from("chats")
-        .select("ended_at")
+        .select("ended_at, user1_id, user2_id")
         .eq("id", chatId)
-        .maybeSingle(); // Use maybeSingle in case chat doesn't exist
+        .single(); // Chat must exist
 
-      if (chatError || !chatData) {
-        console.error(
-          "Error fetching chat status or chat not found:",
-          chatError?.message
-        );
-        toast.error("Chat not found or could not load status.");
+      if (chatDetailsError || !chatDetails) {
+        toast.error("Could not load chat details.");
         setIsChatActive(false);
-      } else if (chatData.ended_at) {
-        toast.info("This chat has already ended.");
-        setIsChatActive(false);
+      } else {
+        if (chatDetails.ended_at) {
+          toast.info("This chat has already ended.");
+          setIsChatActive(false);
+        }
+        if (currentUser.id === chatDetails.user1_id) {
+          setPartnerId(chatDetails.user2_id);
+        } else if (currentUser.id === chatDetails.user2_id) {
+          setPartnerId(chatDetails.user1_id);
+        } else {
+          toast.error("Access denied to this chat.");
+          setIsChatActive(false);
+        }
       }
-
       setIsLoading(false);
     };
-
     initializeChat();
   }, [supabase, chatId, router]);
 
   // Scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
+    }
   }, [messages]);
 
-  // Realtime subscriptions for messages and chat end
+  // Realtime subscriptions
   useEffect(() => {
-    if (!chatId || !isChatActive) return; // Only subscribe if chat is active
+    if (!chatId || !isChatActive || !user) return;
 
+    // Message Subscription
     const messageChannel = supabase
       .channel(`chat_messages_${chatId}`)
       .on(
@@ -154,23 +164,20 @@ export default function ChatRoomPage({
           filter: `chat_id=eq.${chatId}`,
         },
         (payload) => {
-          console.log("New message received:", payload);
-          // Avoid adding duplicate if sender's own message comes via RT before DB confirms insert
-          setMessages((prevMessages) =>
-            prevMessages.some((msg) => msg.id === (payload.new as Message).id)
-              ? prevMessages
-              : [...prevMessages, payload.new as Message]
+          setMessages((prev) =>
+            prev.some((msg) => msg.id === (payload.new as Message).id)
+              ? prev
+              : [...prev, payload.new as Message]
           );
         }
       )
       .subscribe((status, err) => {
-        if (status === "CHANNEL_ERROR") {
-          console.error("Message channel error:", err);
+        if (status === "CHANNEL_ERROR")
           toast.error("Message connection error.");
-        }
       });
 
-    const chatChannel = supabase
+    // Chat Status (End) Subscription
+    const chatStatusChannel = supabase
       .channel(`chat_status_${chatId}`)
       .on(
         "postgres_changes",
@@ -181,39 +188,141 @@ export default function ChatRoomPage({
           filter: `id=eq.${chatId}`,
         },
         (payload) => {
-          console.log("Chat update received:", payload);
           const updatedChat = payload.new as { ended_at: string | null };
           if (updatedChat.ended_at) {
-            toast.info("Chat ended. You can find a new chat.");
-            setIsChatActive(false); // Disable input etc.
+            toast.info("Chat ended.");
+            setIsChatActive(false);
           }
         }
       )
       .subscribe((status, err) => {
-        if (status === "CHANNEL_ERROR") {
+        if (status === "CHANNEL_ERROR")
           console.error("Chat status channel error:", err);
-          // Maybe less critical to notify user?
+      });
+
+    // Presence Subscription (only if partnerId is known)
+    if (partnerId && user) {
+      // Added user check
+      const presChannel = supabase.channel(`chat_presence_${chatId}`, {
+        config: {
+          presence: { key: user.id },
+          broadcast: { self: false, ack: false }, // Enable broadcast
+        },
+      });
+
+      presChannel
+        .on("presence", { event: "sync" }, () => {
+          const presences = presChannel.presenceState();
+          const partnerIsOnline = Object.keys(presences).some(
+            (key) => key === partnerId
+          );
+          setPartnerPresence(partnerIsOnline ? "online" : "offline");
+        })
+        .on("presence", { event: "join" }, ({ key }) => {
+          if (key === partnerId) setPartnerPresence("online");
+        })
+        .on("presence", { event: "leave" }, ({ key }) => {
+          if (key === partnerId) setPartnerPresence("offline");
+        })
+        .on("broadcast", { event: "typing_start" }, ({ payload }) => {
+          if (payload && payload.sender_id === partnerId) {
+            setIsPartnerTyping(true);
+          }
+        })
+        .on("broadcast", { event: "typing_stop" }, ({ payload }) => {
+          if (payload && payload.sender_id === partnerId) {
+            setIsPartnerTyping(false);
+          }
+        });
+
+      presChannel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presChannel.track({ online_at: new Date().toISOString() }); // For presence
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setPartnerPresence("offline");
         }
       });
+      presenceChannelRef.current = presChannel; // Store for cleanup
+    }
 
     return () => {
       supabase.removeChannel(messageChannel);
-      supabase.removeChannel(chatChannel);
+      supabase.removeChannel(chatStatusChannel);
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current
+          .untrack()
+          .then(() => supabase.removeChannel(presenceChannelRef.current));
+      }
     };
-  }, [chatId, supabase, isChatActive]);
+  }, [chatId, supabase, isChatActive, user, partnerId]); // Added user and partnerId
 
-  // Send Message Handler
+  // Effect to clear typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Effect to send typing_stop when chat becomes inactive
+  useEffect(() => {
+    if (!isChatActive && presenceChannelRef.current && user && partnerId) {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      presenceChannelRef.current.send({
+        type: "broadcast",
+        event: "typing_stop",
+        payload: { sender_id: user.id },
+      });
+      setIsPartnerTyping(false); // Also clear local display if chat ends
+    }
+  }, [isChatActive, user, partnerId]);
+
+  const handleTypingChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    setNewMessage(event.target.value);
+
+    if (!presenceChannelRef.current || !user || !isChatActive || !partnerId)
+      return;
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    presenceChannelRef.current.send({
+      type: "broadcast",
+      event: "typing_start",
+      payload: { sender_id: user.id },
+    });
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (presenceChannelRef.current && user && isChatActive) {
+        // Check isChatActive again
+        presenceChannelRef.current.send({
+          type: "broadcast",
+          event: "typing_stop",
+          payload: { sender_id: user.id },
+        });
+      }
+    }, 1500); // 1.5 seconds of inactivity
+  };
+
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !chatId || !isChatActive) return;
     const contentToSend = newMessage.trim();
-    const tempId = `temp_${Date.now()}`; // Temporary ID for optimistic update
-
-    // Optimistic UI update
+    const tempId = `temp_${Date.now()}`;
     setMessages((prev) => [
       ...prev,
       {
-        id: tempId, // Use temporary ID
+        id: tempId,
         sender_id: user.id,
         content: contentToSend,
         created_at: new Date().toISOString(),
@@ -222,25 +331,29 @@ export default function ChatRoomPage({
     setNewMessage("");
     formRef.current?.reset();
 
+    // Stop typing indicator on send
+    if (presenceChannelRef.current && user && isChatActive && partnerId) {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      presenceChannelRef.current.send({
+        type: "broadcast",
+        event: "typing_stop",
+        payload: { sender_id: user.id },
+      });
+    }
+
     startSendingMessageTransition(async () => {
       const { data, error } = await supabase
         .from("messages")
-        .insert({
-          chat_id: chatId,
-          sender_id: user.id,
-          content: contentToSend,
-        })
+        .insert({ chat_id: chatId, sender_id: user.id, content: contentToSend })
         .select()
-        .single(); // Select the inserted row to get the real ID
-
+        .single();
       if (error) {
-        console.error("Error sending message:", error.message);
         toast.error("Failed to send message.");
-        // Remove optimistic message
         setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
-        setNewMessage(contentToSend); // Add back for retry
+        setNewMessage(contentToSend);
       } else if (data) {
-        // Replace temp message with real one (optional, RT might handle it)
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === tempId ? ({ ...data, id: data.id } as Message) : msg
@@ -250,29 +363,18 @@ export default function ChatRoomPage({
     });
   };
 
-  // End Chat Handler - Now triggered by AlertDialog Action
   const performEndChat = () => {
-    if (!chatId || !isChatActive) return; // Still good to have guards
-
+    if (!chatId || !isChatActive) return;
     startEndingChatTransition(async () => {
-      // Note: setIsChatActive(false) is implicitly handled by the UI disabling
-      // but we might keep it if other logic depends on it before the API call finishes.
-      // For now, let's assume the button disabling is enough visual feedback initially.
-      // setIsChatActive(false); // Can potentially remove this immediate disable
       const { error } = await supabase
         .from("chats")
         .update({ ended_at: new Date().toISOString() })
         .eq("id", chatId);
-
       if (error) {
-        console.error("Error updating chat end time:", error.message);
         toast.error("Failed to end chat session.");
-        setIsChatActive(true); // Re-enable UI on error
-      } else {
-        // toast.info("Chat ended. You can find a new chat.");
-        // Optionally redirect after a delay or provide a button
-        // router.push('/find-chat');
+        setIsChatActive(true);
       }
+      // Realtime update should handle UI changes for both users
     });
   };
 
@@ -286,34 +388,54 @@ export default function ChatRoomPage({
 
   return (
     <main className="flex h-[calc(93dvh)] flex-col items-center justify-center p-4 gap-4">
-      {/* Header Area */}
-      <div className="relative flex justify-start items-center max-w-5xl w-full">
+      <div className="relative flex justify-between items-center max-w-5xl w-full px-2">
+        {" "}
+        {/* Changed to justify-between */}
         <Button
           variant="ghost"
-          size="sm" // Smaller button on mobile
+          size="sm"
           onClick={() => router.push("/find-chat")}
-          // Adjusted absolute positioning for smaller screens
           className="text-xs sm:text-sm"
         >
           <ArrowLeft className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
-          <span className="hidden sm:inline">Back to Find Chat</span>{" "}
-          {/* Hide text on xs */}
-          <span className="sm:hidden">Back</span>{" "}
-          {/* Show shorter text on xs */}
+          <span className="hidden sm:inline">Back to Find Chat</span>
+          <span className="sm:hidden">Back</span>
         </Button>
+        {/* Partner Presence Indicator */}
+        {partnerId && (
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            Partner:
+            <Circle
+              className={`h-3 w-3 ${
+                partnerPresence === "online"
+                  ? "fill-green-500 text-green-500"
+                  : "fill-gray-400 text-gray-400"
+              }`}
+            />
+            {partnerPresence}
+          </div>
+        )}
       </div>
-      <div className="z-10 border rounded-lg max-w-5xl w-full h-[90%] text-sm flex">
+      <div className="z-10 border rounded-lg max-w-5xl w-full h-[calc(100%-60px)] text-sm flex">
+        {" "}
+        {/* Adjusted height */}
         <div className="flex h-full w-full flex-col">
-          <div className="flex-1 w-full overflow-y-auto bg-muted/40">
-            <ChatMessageList ref={messagesContainerRef}>
-              {/* Chat messages */}
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 w-full overflow-y-auto bg-muted/40"
+          >
+            {" "}
+            {/* Added ref here */}
+            <ChatMessageList>
+              {" "}
+              {/* Removed ref from here */}
               <AnimatePresence>
                 {messages.map((message, index) => {
                   const variant =
                     message.sender_id === user?.id ? "sent" : "received";
                   return (
                     <motion.div
-                      key={index}
+                      key={message.id} // Use message.id for key
                       layout
                       initial={{ opacity: 0, scale: 1, y: 50, x: 0 }}
                       animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
@@ -329,12 +451,12 @@ export default function ChatRoomPage({
                       style={{ originX: 0.5, originY: 0.5 }}
                       className="flex flex-col gap-2 p-4"
                     >
-                      <ChatBubble key={index} variant={variant}>
+                      <ChatBubble variant={variant}>
                         <ChatBubbleMessage
                           className={`${
                             variant === "sent"
-                              ? "bg-blue-600 text-white" // Keep sender style
-                              : "bg-gray-200 text-gray-900"
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
                           }`}
                           isLoading={false}
                         >
@@ -354,6 +476,11 @@ export default function ChatRoomPage({
               <div ref={messagesEndRef} />
             </ChatMessageList>
           </div>
+          {isPartnerTyping && partnerId && isChatActive && (
+            <div className="px-4 pt-1 pb-1 text-xs text-gray-500 dark:text-gray-400 italic">
+              Partner is typing...
+            </div>
+          )}
           <div className="px-4 pb-4 bg-muted/40">
             <form
               ref={formRef}
@@ -362,36 +489,36 @@ export default function ChatRoomPage({
             >
               <ChatInput
                 ref={inputRef}
-                onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setNewMessage(event.target.value)
-                }
-                onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                value={newMessage} // Ensure value is bound
+                onChange={handleTypingChange} // Use new handler
+                onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
                     handleSendMessage(
                       e as unknown as React.FormEvent<HTMLFormElement>
                     );
                   }
                 }}
-                placeholder="Type your message here..."
+                placeholder={
+                  isChatActive ? "Type your message here..." : "Chat has ended"
+                }
                 className="min-h-12 resize-none rounded-lg bg-background border-0 p-3 shadow-none focus-visible:ring-0"
+                disabled={!isChatActive}
               />
               <div className="flex items-center p-3 pt-0 gap-2">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      size="sm" // Smaller button size
+                      size="sm"
                       variant="destructive"
-                      // No direct onClick here, it triggers the dialog
-                      disabled={!isChatActive || isEndingChat} // Disable trigger if already ending or chat inactive
-                      className="px-3 sm:px-4 ml-auto " // Adjust padding
+                      disabled={!isChatActive || isEndingChat}
+                      className="px-3 sm:px-4 ml-auto"
                     >
-                      {/* Button Content */}
                       {isEndingChat ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <>
                           <span className="hidden sm:inline">End Chat</span>{" "}
-                          {/* Hide text on xs */}
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             width="18"
@@ -406,8 +533,7 @@ export default function ChatRoomPage({
                           >
                             <path d="M18 6 6 18" />
                             <path d="m6 6 12 12" />
-                          </svg>{" "}
-                          {/* X Icon for xs */}
+                          </svg>
                         </>
                       )}
                     </Button>
@@ -427,9 +553,9 @@ export default function ChatRoomPage({
                         Cancel
                       </AlertDialogCancel>
                       <AlertDialogAction
-                        onClick={performEndChat} // Call the actual end chat logic
-                        disabled={isEndingChat} // Disable action if already ending
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-white" // Destructive styling
+                        onClick={performEndChat}
+                        disabled={isEndingChat}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
                         {isEndingChat ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -439,7 +565,6 @@ export default function ChatRoomPage({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-
                 <Button
                   disabled={
                     !isChatActive || !newMessage.trim() || isSendingMessage
@@ -452,7 +577,6 @@ export default function ChatRoomPage({
                   ) : (
                     "Send Message"
                   )}
-
                   <CornerDownLeft className="size-3.5" />
                 </Button>
               </div>
