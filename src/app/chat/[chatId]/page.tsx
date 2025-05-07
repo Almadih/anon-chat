@@ -45,6 +45,8 @@ import {
   arrayBufferToBase64,
   base64ToArrayBuffer,
   deriveSharedKey, // Added for shared key derivation
+  generateKeyFingerprint,
+  EMOJI_LIST, // Added for safety emojis
 } from "@/lib/crypto";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
 import {
@@ -55,6 +57,22 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Not used yet
 import { ChatInput } from "@/components/ui/chat/chat-input";
+
+function mapHashToEmojis(hashHex: string, count: number = 6): string[] {
+  const emojis: string[] = [];
+  if (hashHex.length < count * 2) {
+    // Each emoji needs 2 hex chars (1 byte)
+    console.error("Hash too short for emoji mapping");
+    return Array(count).fill("❓"); // Return question marks if hash is too short
+  }
+
+  for (let i = 0; i < count; i++) {
+    const hexSegment = hashHex.substring(i * 2, i * 2 + 2); // Get 2 hex characters (representing 1 byte)
+    const numValue = parseInt(hexSegment, 16); // Convert hex byte to number (0-255)
+    emojis.push(EMOJI_LIST[numValue % EMOJI_LIST.length]); // Modulo ensures it's a valid index
+  }
+  return emojis;
+}
 
 interface Message {
   id: string;
@@ -99,6 +117,9 @@ export default function ChatRoomPage({
   const [sharedSecretKey, setSharedSecretKey] = useState<CryptoKey | null>(
     null
   ); // For derived shared key
+  const [keyFingerprintEmojis, setKeyFingerprintEmojis] = useState<
+    string[] | null
+  >(null); // For safety emojis
   const [encryptionStatus, setEncryptionStatus] = useState<
     "pending" | "active" | "failed" | "inactive"
   >("pending");
@@ -284,8 +305,20 @@ export default function ChatRoomPage({
           }
           console.log("Derived shared key:", derivedKey);
           setSharedSecretKey(derivedKey);
-          console.log("Encryption status set to active", sharedSecretKey);
+          console.log("Encryption status set to active", sharedSecretKey); // Note: sharedSecretKey might not be updated here due to closure
           setEncryptionStatus("active");
+
+          if (derivedKey) {
+            try {
+              const fingerprintHex = await generateKeyFingerprint(derivedKey);
+              const emojis = mapHashToEmojis(fingerprintHex, 6); // Generate 6 emojis
+              setKeyFingerprintEmojis(emojis);
+              console.log("Generated key fingerprint emojis:", emojis);
+            } catch (fpError) {
+              console.error("Failed to generate key fingerprint:", fpError);
+              setKeyFingerprintEmojis(Array(6).fill("⚠️")); // Indicate error
+            }
+          }
         } catch (e) {
           console.error("Failed to derive or store shared key:", e);
           toast.error("Failed to establish secure session.");
@@ -452,65 +485,192 @@ export default function ChatRoomPage({
           console.error("Chat status channel error:", err);
       });
 
-    // Presence Subscription (only if partnerId is known)
-    if (partnerId && user) {
-      // Added user check
-      const presChannel = supabase.channel(`chat_presence_${chatId}`, {
-        config: {
-          presence: { key: user.id },
-          broadcast: { self: false, ack: false }, // Enable broadcast
+    // Presence logic removed from this hook
+
+    return () => {
+      // Only clean up channels managed by this hook
+      supabase.removeChannel(messageChannel);
+      supabase.removeChannel(chatStatusChannel);
+      // Presence channel cleanup moved to its dedicated hook
+    };
+    // Dependency array updated: Removed partnerId, kept sharedSecretKey
+  }, [chatId, supabase, isChatActive, user, sharedSecretKey]);
+
+  // Realtime Presence Subscription Hook
+  useEffect(() => {
+    // Dependencies: chatId, supabase, isChatActive, user, partnerId
+    if (!chatId || !isChatActive || !user || !partnerId) return; // Added partnerId check
+
+    // Message Subscription logic removed
+
+    // Chat Status (End) Subscription
+    const chatStatusChannel = supabase
+      .channel(`chat_status_${chatId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chats",
+          filter: `id=eq.${chatId}`,
         },
+        (payload) => {
+          const updatedChat = payload.new as { ended_at: string | null };
+          if (updatedChat.ended_at) {
+            toast.info("Chat ended.");
+            setIsChatActive(false);
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR")
+          console.error("Chat status channel error:", err);
       });
 
-      presChannel
-        .on("presence", { event: "sync" }, () => {
-          const presences = presChannel.presenceState();
-          const partnerIsOnline = Object.keys(presences).some(
-            (key) => key === partnerId
-          );
-          setPartnerPresence(partnerIsOnline ? "online" : "offline");
-        })
-        .on("presence", { event: "join" }, ({ key }) => {
-          if (key === partnerId) setPartnerPresence("online");
-        })
-        .on("presence", { event: "leave" }, ({ key }) => {
-          if (key === partnerId) setPartnerPresence("offline");
-        })
-        .on("broadcast", { event: "typing_start" }, ({ payload }) => {
-          if (payload && payload.sender_id === partnerId) {
-            setIsPartnerTyping(true);
-          }
-        })
-        .on("broadcast", { event: "typing_stop" }, ({ payload }) => {
-          if (payload && payload.sender_id === partnerId) {
-            setIsPartnerTyping(false);
-          }
-        });
+    // Presence Subscription logic removed - moved to dedicated hook below
 
-      presChannel.subscribe(async (status) => {
+    return () => {
+      // Cleanup for messages and chat status channels
+      supabase.removeChannel(chatStatusChannel);
+    };
+    // Dependencies only for messages and chat status
+  }, [chatId, supabase, isChatActive, user, sharedSecretKey]);
+
+  // Realtime Presence Subscription
+  useEffect(() => {
+    if (!chatId || !isChatActive || !user || !partnerId) return;
+
+    // Presence Channel Setup
+    const presenceChannel = supabase.channel(`chat_presence_${chatId}`, {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    });
+
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const presences = presenceChannel.presenceState();
+        const partnerIsOnline = Object.keys(presences).includes(partnerId);
+        setPartnerPresence(partnerIsOnline ? "online" : "offline");
+      })
+      .on("presence", { event: "join" }, ({ key }) => {
+        if (key === partnerId) setPartnerPresence("online");
+      })
+      .on("presence", { event: "leave" }, ({ key }) => {
+        if (key === partnerId) setPartnerPresence("offline");
+      })
+      .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await presChannel.track({ online_at: new Date().toISOString() }); // For presence
-        } else if (
-          status === "CHANNEL_ERROR" ||
-          status === "TIMED_OUT" ||
-          status === "CLOSED"
-        ) {
-          setPartnerPresence("offline");
+          await presenceChannel.track({
+            user_id: user.id,
+            online_at: new Date().toISOString(),
+          });
         }
       });
-      presenceChannelRef.current = presChannel; // Store for cleanup
-    }
+
+    presenceChannelRef.current = presenceChannel;
+
+    // Message Subscription
+    const messageChannel = supabase
+      .channel(`chat_messages_${chatId}_${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `chat_id=eq.${chatId}`,
+        },
+        async (payload) => {
+          const newMessage = payload.new as Message;
+          if (sharedSecretKey) {
+            try {
+              const decryptedContent = await decryptData(
+                sharedSecretKey, // Use shared key
+                base64ToArrayBuffer(newMessage.content)
+              );
+              setMessages((prev) =>
+                prev.some((msg) => msg.id === newMessage.id)
+                  ? prev
+                  : [...prev, { ...newMessage, content: decryptedContent }]
+              );
+            } catch (e) {
+              console.error(
+                "Failed to decrypt incoming message with shared key:",
+                e
+              );
+              setMessages((prev) =>
+                prev.some((msg) => msg.id === newMessage.id)
+                  ? prev
+                  : [
+                      ...prev,
+                      { ...newMessage, content: "[Message undecryptable]" },
+                    ]
+              );
+            }
+          } else {
+            // Shared key not ready, show placeholder or error
+            console.warn(
+              "Received message but shared key is not available for decryption."
+            );
+            setMessages((prev) =>
+              prev.some((msg) => msg.id === newMessage.id)
+                ? prev
+                : [
+                    ...prev,
+                    {
+                      ...newMessage,
+                      content: "[Decrypting... Key not ready]",
+                    },
+                  ]
+            );
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR")
+          toast.error("Message connection error.");
+      });
+
+    // Chat Status (End) Subscription
+    const chatStatusChannel = supabase
+      .channel(`chat_status_${chatId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chats",
+          filter: `id=eq.${chatId}`,
+        },
+        (payload) => {
+          const updatedChat = payload.new as { ended_at: string | null };
+          if (updatedChat.ended_at) {
+            toast.info("Chat ended.");
+            setIsChatActive(false);
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR")
+          console.error("Chat status channel error:", err);
+      });
+
+    // Presence Subscription logic removed - moved to dedicated hook below
 
     return () => {
       supabase.removeChannel(messageChannel);
       supabase.removeChannel(chatStatusChannel);
-      if (presenceChannelRef.current) {
-        presenceChannelRef.current
-          .untrack()
-          .then(() => supabase.removeChannel(presenceChannelRef.current));
-      }
+      // Presence channel cleanup moved to its dedicated hook
+      // if (presenceChannelRef.current) {
+      //   presenceChannelRef.current
+      //     .untrack()
+      //     .then(() => supabase.removeChannel(presenceChannelRef.current));
+      // }
     };
-  }, [chatId, supabase, isChatActive, user, partnerId, sharedSecretKey]); // Added user and partnerId
+  }, [chatId, supabase, isChatActive, user, partnerId, sharedSecretKey]); // Dependency array will be updated next
 
   // Effect to clear typing timeout on unmount
   useEffect(() => {
@@ -735,6 +895,19 @@ export default function ChatRoomPage({
               {encryptionStatus === "inactive" && "Chat Ended"}
             </span>
           </div>
+          {/* Safety Emojis Display */}
+          {encryptionStatus === "active" && keyFingerprintEmojis && (
+            <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400 p-1 bg-muted rounded-md">
+              <span className="font-semibold">Verify:</span>
+              {keyFingerprintEmojis.map((emoji, index) => (
+                <span key={index} className="text-lg">
+                  {" "}
+                  {/* Increased emoji size */}
+                  {emoji}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <div className="z-10 border rounded-lg max-w-5xl w-full h-[calc(100%-60px)] text-sm flex">
@@ -770,7 +943,7 @@ export default function ChatRoomPage({
                         },
                       }}
                       style={{ originX: 0.5, originY: 0.5 }}
-                      className="flex flex-col gap-2 p-4"
+                      className="flex flex-col"
                     >
                       <ChatBubble variant={variant}>
                         <ChatBubbleMessage
