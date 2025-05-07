@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation';
 interface ProfileUpdateData {
     mbti_type: string;
     interested_mbti_types: string[];
+    public_key_jwk?: Record<string, any>; // For storing public key in JWK format
 }
 
 // Define the return type for the action
@@ -38,13 +39,24 @@ export async function updateProfile(formData: ProfileUpdateData): Promise<Update
     }
     // Add more validation as needed
 
+    const updateData: {
+        mbti_type: string;
+        interested_mbti_types: string[];
+        updated_at: string;
+        public_key?: Record<string, any>;
+    } = {
+        mbti_type: formData.mbti_type,
+        interested_mbti_types: formData.interested_mbti_types,
+        updated_at: new Date().toISOString(), // Manually set updated_at just in case trigger fails
+    };
+
+    if (formData.public_key_jwk) {
+        updateData.public_key = formData.public_key_jwk;
+    }
+
     const { error: updateError } = await supabase
         .from('profiles')
-        .update({
-            mbti_type: formData.mbti_type,
-            interested_mbti_types: formData.interested_mbti_types,
-            updated_at: new Date().toISOString(), // Manually set updated_at just in case trigger fails
-        })
+        .update(updateData)
         .eq('id', user.id);
 
     if (updateError) {

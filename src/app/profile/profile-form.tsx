@@ -4,6 +4,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react"; // Added
+import {
+  generateEncryptionKeyPair,
+  exportKeyToJwk,
+  importJwkToKey,
+} from "@/lib/crypto"; // Added
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
@@ -23,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { updateProfile } from "./actions"; // Import the server action
 import { useRouter } from "next/navigation"; // No longer needed for redirect
-import { useTransition } from "react"; // To show pending state
+import { useTransition, Suspense } from "react"; // To show pending state // Added Suspense
 import { toast } from "sonner"; // Import toast
 
 // Define MBTI types
@@ -71,6 +77,7 @@ interface ProfileFormProps {
     // Make initialData optional in case profile doesn't exist yet
     mbti_type?: string | null;
     interested_mbti_types?: string[] | null;
+    public_key?: JsonWebKey | null; // Add public_key to initialData
   };
 }
 
@@ -78,6 +85,69 @@ export function ProfileForm({ initialData = {} }: ProfileFormProps) {
   // Default to empty object
   // const router = useRouter(); // No longer needed
   const [isPending, startTransition] = useTransition();
+  const [privateKeyJwk, setPrivateKeyJwk] = useState<JsonWebKey | null>(null);
+  const [publicKeyJwk, setPublicKeyJwk] = useState<JsonWebKey | null>(
+    initialData.public_key || null
+  );
+  const [keyGenerationMessage, setKeyGenerationMessage] = useState<string>("");
+
+  // Effect to load private key from localStorage on mount
+  useEffect(() => {
+    const storedPrivateKey = localStorage.getItem("privateKeyJwk");
+    if (storedPrivateKey) {
+      try {
+        const parsedKey = JSON.parse(storedPrivateKey);
+        setPrivateKeyJwk(parsedKey);
+        setKeyGenerationMessage("Encryption keys loaded from local storage.");
+        // If public key is also in initialData, assume keys are ready
+        if (initialData.public_key) {
+          setPublicKeyJwk(initialData.public_key);
+        }
+      } catch (error) {
+        console.error("Failed to parse private key from localStorage:", error);
+        setKeyGenerationMessage(
+          "Error loading private key. Please regenerate keys."
+        );
+        localStorage.removeItem("privateKeyJwk"); // Clear corrupted key
+      }
+    } else if (initialData.public_key) {
+      // Has public key from DB but no private key in local storage
+      setKeyGenerationMessage(
+        "Public key found, but private key missing from local storage. Please regenerate keys for full functionality."
+      );
+    } else {
+      setKeyGenerationMessage(
+        "No encryption keys found. Generate them to enable secure chat."
+      );
+    }
+  }, [initialData.public_key]);
+
+  const handleGenerateAndStoreKeys = async () => {
+    try {
+      setKeyGenerationMessage("Generating keys...");
+      const { publicKey, privateKey } = await generateEncryptionKeyPair();
+      const pubJwk = await exportKeyToJwk(publicKey);
+      const privJwk = await exportKeyToJwk(privateKey);
+
+      localStorage.setItem("privateKeyJwk", JSON.stringify(privJwk));
+      setPrivateKeyJwk(privJwk);
+      setPublicKeyJwk(pubJwk); // Set public key in state to be included in form submission
+
+      // Update the form value for public_key_jwk if you add it to the schema
+      // form.setValue('public_key_jwk', pubJwk as any, { shouldValidate: true });
+
+      setKeyGenerationMessage(
+        "New encryption keys generated and stored locally. Save profile to store public key."
+      );
+      toast.info("Encryption keys generated. Remember to save your profile.");
+    } catch (error) {
+      console.error("Key generation failed:", error);
+      setKeyGenerationMessage(
+        "Key generation failed. See console for details."
+      );
+      toast.error("Key generation failed.");
+    }
+  };
 
   // Validate and prepare default values
   const defaultMbtiType = isValidMbtiType(initialData.mbti_type)
@@ -101,13 +171,26 @@ export function ProfileForm({ initialData = {} }: ProfileFormProps) {
   function onSubmit(data: ProfileFormValues) {
     startTransition(async () => {
       // Prepare data, ensuring interested_mbti_types is an array
-      const formData = {
+      const submissionData: {
+        mbti_type: (typeof mbtiTypes)[number];
+        interested_mbti_types: (typeof mbtiTypes)[number][];
+        public_key_jwk?: JsonWebKey;
+      } = {
         mbti_type: data.mbti_type,
         // Ensure interested_mbti_types is always an array, even if empty
         interested_mbti_types: data.interested_mbti_types || [],
       };
+
+      if (publicKeyJwk) {
+        submissionData.public_key_jwk = publicKeyJwk;
+      } else if (initialData.public_key) {
+        // If no new public key was generated, but one exists from initial load, send that.
+        // This handles cases where user updates other fields without regenerating keys.
+        submissionData.public_key_jwk = initialData.public_key;
+      }
+
       // Call the action and handle the response
-      const result = await updateProfile(formData);
+      const result = await updateProfile(submissionData);
 
       if (result.success) {
         toast.success(result.message);
@@ -205,6 +288,37 @@ export function ProfileForm({ initialData = {} }: ProfileFormProps) {
         <Button type="submit" disabled={isPending}>
           {isPending ? "Saving..." : "Update Profile"}
         </Button>
+
+        <div className="mt-8 pt-6 border-t">
+          <h3 className="text-lg font-medium mb-2">Encryption Keys</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            {keyGenerationMessage}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleGenerateAndStoreKeys}
+            disabled={isPending}
+          >
+            {privateKeyJwk || publicKeyJwk
+              ? "Regenerate Keys"
+              : "Generate Keys"}
+          </Button>
+          {privateKeyJwk && publicKeyJwk && (
+            <p className="text-xs text-green-600 mt-2">
+              Keys are active. Public key will be saved with your profile.
+            </p>
+          )}
+          {!privateKeyJwk && initialData.public_key && (
+            <p className="text-xs text-orange-600 mt-2">
+              Warning: Your public key is saved, but the private key is missing
+              from this browser. You won't be able to decrypt messages until you
+              regenerate keys. Regenerating keys will allow you to chat but you
+              will lose access to previous encrypted messages from other
+              devices.
+            </p>
+          )}
+        </div>
       </form>
     </Form>
   );

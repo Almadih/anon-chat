@@ -77,9 +77,7 @@ export default async function Home() {
           </div>
         )}
       </div>
-      <footer className="absolute bottom-4 text-xs text-gray-500 dark:text-gray-600">
-        MBTI Chat App &copy; {new Date().getFullYear()}
-      </footer>
+      {/* Removed page-specific footer to rely on global footer from layout.tsx */}
     </div>
   );
 }

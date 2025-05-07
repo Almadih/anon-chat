@@ -33,8 +33,19 @@ import {
   Mic, // Not used
   CornerDownLeft,
   Circle, // For presence indicator
+  Lock, // For E2EE status
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import {
+  generateEncryptionKeyPair, // Not strictly needed here, but good for reference
+  exportKeyToJwk, // Not strictly needed here
+  importJwkToKey,
+  encryptData,
+  decryptData,
+  arrayBufferToBase64,
+  base64ToArrayBuffer,
+  deriveSharedKey, // Added for shared key derivation
+} from "@/lib/crypto";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
 import {
   ChatBubble,
@@ -80,26 +91,229 @@ export default function ChatRoomPage({
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [currentUserPrivateKey, setCurrentUserPrivateKey] =
+    useState<CryptoKey | null>(null);
+  const [partnerPublicKey, setPartnerPublicKey] = useState<CryptoKey | null>(
+    null
+  );
+  const [sharedSecretKey, setSharedSecretKey] = useState<CryptoKey | null>(
+    null
+  ); // For derived shared key
+  const [encryptionStatus, setEncryptionStatus] = useState<
+    "pending" | "active" | "failed" | "inactive"
+  >("pending");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const presenceChannelRef = useRef<any>(null);
 
+  useEffect(() => {}, [chatId]);
+
   // Fetch user, initial messages, and partner ID
   useEffect(() => {
     const initializeChat = async () => {
       setIsLoading(true);
+      setEncryptionStatus("pending");
+      let currentPartnerId: string | null = null;
+
       const {
         data: { user: currentUser },
       } = await supabase.auth.getUser();
       if (!currentUser) {
         toast.error("Authentication error.");
         router.push("/login");
+        setIsLoading(false);
+        setEncryptionStatus("failed");
         return;
       }
       setUser(currentUser);
 
-      const { data: initialMessages, error: messagesError } = await supabase
+      // 1. Load current user's private key
+      const storedPrivateKeyJwk = localStorage.getItem("privateKeyJwk");
+      if (storedPrivateKeyJwk) {
+        try {
+          const parsedPrivJwk = JSON.parse(storedPrivateKeyJwk);
+          // Updated to use new importJwkToKey signature and appropriate usages for ECDH private key
+          const privateKey = await importJwkToKey(parsedPrivJwk, [
+            "deriveKey",
+            "deriveBits",
+          ]);
+          setCurrentUserPrivateKey(privateKey);
+        } catch (e) {
+          console.error("Failed to load/import private key:", e);
+          toast.error(
+            "Your encryption key is corrupted or missing. Cannot decrypt messages."
+          );
+          setEncryptionStatus("failed");
+          // Potentially set isChatActive to false or handle this state
+        }
+      } else {
+        toast.error(
+          "Your encryption key is missing. Cannot decrypt messages. Please visit your profile to generate keys."
+        );
+        setEncryptionStatus("failed");
+        // Potentially set isChatActive to false
+      }
+
+      // 2. Fetch chat details to find partner ID
+      const { data: chatDetails, error: chatDetailsError } = await supabase
+        .from("chats")
+        .select("ended_at, user1_id, user2_id")
+        .eq("id", chatId)
+        .single();
+
+      if (chatDetailsError || !chatDetails) {
+        toast.error("Could not load chat details.");
+        setIsChatActive(false);
+        setIsLoading(false);
+        setEncryptionStatus("failed");
+        return;
+      }
+
+      if (chatDetails.ended_at) {
+        toast.info("This chat has already ended.");
+        setIsChatActive(false);
+        setEncryptionStatus("inactive");
+      }
+
+      if (currentUser.id === chatDetails.user1_id) {
+        currentPartnerId = chatDetails.user2_id;
+        setPartnerId(chatDetails.user2_id);
+      } else if (currentUser.id === chatDetails.user2_id) {
+        currentPartnerId = chatDetails.user1_id;
+        setPartnerId(chatDetails.user1_id);
+      } else {
+        toast.error("Access denied to this chat.");
+        setIsChatActive(false);
+        setIsLoading(false);
+        setEncryptionStatus("failed");
+        return;
+      }
+
+      // 3. Fetch partner's public key if partnerId is found
+      if (currentPartnerId) {
+        const { data: partnerProfile, error: partnerProfileError } =
+          await supabase
+            .from("profiles")
+            .select("public_key")
+            .eq("id", currentPartnerId)
+            .single();
+
+        console.log({ currentPartnerId });
+
+        if (
+          partnerProfileError ||
+          !partnerProfile ||
+          !partnerProfile.public_key
+        ) {
+          console.error(
+            "Failed to fetch partner's public key:",
+            partnerProfileError
+          );
+          toast.error(
+            "Could not retrieve partner's encryption key. Cannot send encrypted messages."
+          );
+          setEncryptionStatus("failed");
+          // Potentially set isChatActive to false
+        } else {
+          try {
+            // Updated to use new importJwkToKey signature for ECDH public key
+            const pubKey = await importJwkToKey(
+              partnerProfile.public_key as JsonWebKey,
+              [] // ECDH public keys are used in deriveKey, not directly for encrypt/decrypt
+            );
+            setPartnerPublicKey(pubKey);
+          } catch (e) {
+            console.error("Failed to import partner's public key:", e);
+            toast.error(
+              "Partner's encryption key is invalid. Cannot send encrypted messages."
+            );
+            setEncryptionStatus("failed");
+          }
+        }
+      } else {
+        setEncryptionStatus("failed"); // Should not happen if chatDetails logic is correct
+      }
+
+      setIsLoading(false); // Set loading to false after all async operations
+    };
+    initializeChat();
+  }, [supabase, chatId, router]); // currentUserPrivateKey, partnerPublicKey are implicitly part of this effect's re-run logic via initializeChat
+
+  useEffect(() => {
+    const initDerivedKey = async () => {
+      if (!currentUserPrivateKey || !partnerPublicKey) return;
+
+      // Update encryption status based on key availability and derive shared key
+      if (currentUserPrivateKey && partnerPublicKey && isChatActive) {
+        try {
+          const storedSharedKeyJwkString = localStorage.getItem(
+            `sharedKey_jwk_${chatId}`
+          );
+          let derivedKey: CryptoKey | null = null;
+
+          if (storedSharedKeyJwkString) {
+            try {
+              const storedSharedKeyJwk = JSON.parse(storedSharedKeyJwkString);
+              // Import with AES-GCM usages
+              derivedKey = await importJwkToKey(storedSharedKeyJwk, [
+                "encrypt",
+                "decrypt",
+              ]);
+              console.log("Loaded shared key from localStorage");
+            } catch (e) {
+              console.warn(
+                "Failed to load shared key from localStorage, re-deriving:",
+                e
+              );
+              localStorage.removeItem(`sharedKey_jwk_${chatId}`); // Clear corrupted key
+            }
+          }
+
+          if (!derivedKey) {
+            derivedKey = await deriveSharedKey(
+              currentUserPrivateKey,
+              partnerPublicKey
+            );
+            const exportedDerivedKeyJwk = await exportKeyToJwk(derivedKey);
+            localStorage.setItem(
+              `sharedKey_jwk_${chatId}`,
+              JSON.stringify(exportedDerivedKeyJwk)
+            );
+            console.log("Derived and stored new shared key");
+          }
+          console.log("Derived shared key:", derivedKey);
+          setSharedSecretKey(derivedKey);
+          console.log("Encryption status set to active", sharedSecretKey);
+          setEncryptionStatus("active");
+        } catch (e) {
+          console.error("Failed to derive or store shared key:", e);
+          toast.error("Failed to establish secure session.");
+          setEncryptionStatus("failed");
+        }
+      } else if (isChatActive) {
+        // If chat is active but keys are missing for derivation
+        setEncryptionStatus("failed");
+        if (!currentUserPrivateKey)
+          toast.error("Your encryption key is missing.");
+        if (!partnerPublicKey)
+          toast.error("Partner's encryption key is missing.");
+      }
+    };
+    initDerivedKey();
+  }, [currentUserPrivateKey, partnerPublicKey, isChatActive]);
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!sharedSecretKey || !isChatActive) {
+        if (isChatActive && encryptionStatus !== "pending") {
+          // Only show error if not pending and chat is supposed to be active
+          // toast.error("Cannot load messages: Secure session not established.");
+        }
+        return;
+      }
+
+      const { data: initialMessagesRaw, error: messagesError } = await supabase
         .from("messages")
         .select("*")
         .eq("chat_id", chatId)
@@ -107,38 +321,38 @@ export default function ChatRoomPage({
 
       if (messagesError) {
         toast.error("Failed to load chat messages.");
-        setIsChatActive(false);
-      } else {
-        setMessages(initialMessages || []);
-      }
-
-      const { data: chatDetails, error: chatDetailsError } = await supabase
-        .from("chats")
-        .select("ended_at, user1_id, user2_id")
-        .eq("id", chatId)
-        .single(); // Chat must exist
-
-      if (chatDetailsError || !chatDetails) {
-        toast.error("Could not load chat details.");
-        setIsChatActive(false);
-      } else {
-        if (chatDetails.ended_at) {
-          toast.info("This chat has already ended.");
-          setIsChatActive(false);
+      } else if (initialMessagesRaw) {
+        const decryptedMessages: Message[] = [];
+        for (const msg of initialMessagesRaw) {
+          try {
+            const decryptedContent = await decryptData(
+              sharedSecretKey, // Use shared key for decryption
+              base64ToArrayBuffer(msg.content)
+            );
+            decryptedMessages.push({ ...msg, content: decryptedContent });
+          } catch (e) {
+            console.error(
+              `Failed to decrypt message ${msg.id} with shared key:`,
+              e
+            );
+            decryptedMessages.push({
+              ...msg,
+              content: "[Message undecryptable]",
+            });
+          }
         }
-        if (currentUser.id === chatDetails.user1_id) {
-          setPartnerId(chatDetails.user2_id);
-        } else if (currentUser.id === chatDetails.user2_id) {
-          setPartnerId(chatDetails.user1_id);
-        } else {
-          toast.error("Access denied to this chat.");
-          setIsChatActive(false);
-        }
+        setMessages(decryptedMessages);
       }
-      setIsLoading(false);
     };
-    initializeChat();
-  }, [supabase, chatId, router]);
+
+    if (sharedSecretKey && isChatActive && encryptionStatus === "active") {
+      loadMessages();
+    } else if (isChatActive && encryptionStatus === "failed") {
+      // Potentially clear messages or show error state
+      setMessages([]); // Clear messages if encryption failed
+      toast.error("Encryption failed, cannot display messages securely.");
+    }
+  }, [sharedSecretKey, isChatActive, chatId, supabase, encryptionStatus]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -163,12 +377,50 @@ export default function ChatRoomPage({
           table: "messages",
           filter: `chat_id=eq.${chatId}`,
         },
-        (payload) => {
-          setMessages((prev) =>
-            prev.some((msg) => msg.id === (payload.new as Message).id)
-              ? prev
-              : [...prev, payload.new as Message]
-          );
+        async (payload) => {
+          const newMessage = payload.new as Message;
+          if (sharedSecretKey) {
+            try {
+              const decryptedContent = await decryptData(
+                sharedSecretKey, // Use shared key
+                base64ToArrayBuffer(newMessage.content)
+              );
+              setMessages((prev) =>
+                prev.some((msg) => msg.id === newMessage.id)
+                  ? prev
+                  : [...prev, { ...newMessage, content: decryptedContent }]
+              );
+            } catch (e) {
+              console.error(
+                "Failed to decrypt incoming message with shared key:",
+                e
+              );
+              setMessages((prev) =>
+                prev.some((msg) => msg.id === newMessage.id)
+                  ? prev
+                  : [
+                      ...prev,
+                      { ...newMessage, content: "[Message undecryptable]" },
+                    ]
+              );
+            }
+          } else {
+            // Shared key not ready, show placeholder or error
+            console.warn(
+              "Received message but shared key is not available for decryption."
+            );
+            setMessages((prev) =>
+              prev.some((msg) => msg.id === newMessage.id)
+                ? prev
+                : [
+                    ...prev,
+                    {
+                      ...newMessage,
+                      content: "[Decrypting... Key not ready]",
+                    },
+                  ]
+            );
+          }
         }
       )
       .subscribe((status, err) => {
@@ -258,7 +510,7 @@ export default function ChatRoomPage({
           .then(() => supabase.removeChannel(presenceChannelRef.current));
       }
     };
-  }, [chatId, supabase, isChatActive, user, partnerId]); // Added user and partnerId
+  }, [chatId, supabase, isChatActive, user, partnerId, sharedSecretKey]); // Added user and partnerId
 
   // Effect to clear typing timeout on unmount
   useEffect(() => {
@@ -282,7 +534,7 @@ export default function ChatRoomPage({
       });
       setIsPartnerTyping(false); // Also clear local display if chat ends
     }
-  }, [isChatActive, user, partnerId]);
+  }, [isChatActive, user, partnerId, presenceChannelRef, typingTimeoutRef]); // Added refs to dependency array
 
   const handleTypingChange = (
     event: React.ChangeEvent<HTMLTextAreaElement>
@@ -316,15 +568,33 @@ export default function ChatRoomPage({
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user || !chatId || !isChatActive) return;
-    const contentToSend = newMessage.trim();
+    if (
+      !newMessage.trim() ||
+      !user ||
+      !chatId ||
+      !isChatActive ||
+      encryptionStatus !== "active" || // Check general encryption status
+      !sharedSecretKey // Crucially, check if sharedSecretKey is available
+    ) {
+      if (encryptionStatus !== "active") {
+        toast.error("Encryption is not active. Cannot send message.");
+      }
+      if (!sharedSecretKey) {
+        toast.error("Secure session not established. Cannot send message.");
+      }
+      return;
+    }
+
+    const plainTextContent = newMessage.trim();
     const tempId = `temp_${Date.now()}`;
+
+    // Optimistic update with plain text for immediate display
     setMessages((prev) => [
       ...prev,
       {
         id: tempId,
         sender_id: user.id,
-        content: contentToSend,
+        content: plainTextContent, // Optimistically show plain text
         created_at: new Date().toISOString(),
       },
     ]);
@@ -344,21 +614,52 @@ export default function ChatRoomPage({
     }
 
     startSendingMessageTransition(async () => {
-      const { data, error } = await supabase
-        .from("messages")
-        .insert({ chat_id: chatId, sender_id: user.id, content: contentToSend })
-        .select()
-        .single();
-      if (error) {
-        toast.error("Failed to send message.");
-        setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
-        setNewMessage(contentToSend);
-      } else if (data) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempId ? ({ ...data, id: data.id } as Message) : msg
-          )
+      try {
+        // Encrypt with the shared secret key
+        const encryptedBuffer = await encryptData(
+          sharedSecretKey, // Use shared key
+          plainTextContent
         );
+        console.log({ sharedSecretKey });
+        const encryptedBase64 = arrayBufferToBase64(encryptedBuffer);
+
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({
+            chat_id: chatId,
+            sender_id: user.id,
+            content: encryptedBase64,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          toast.error("Failed to send message.");
+          setMessages((prev) => prev.filter((msg) => msg.id !== tempId)); // Remove optimistic
+          setNewMessage(plainTextContent); // Restore input
+        } else if (data) {
+          // Replace optimistic message with confirmed one (content is still plain text from optimistic)
+          // The actual content from DB (data.content) is encrypted.
+          // The subscription listener should handle decrypting messages from others.
+          // For our own messages, if we want to replace the optimistic plain text with a decrypted version
+          // of what was stored, we could decrypt data.content here.
+          // However, since we sent it, we know the plain text.
+          // The main concern is that `data.content` from DB is encrypted.
+          // If we map it directly, it will show encrypted.
+          // Let's ensure the optimistic message (plain text) is simply updated with the real ID.
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === tempId
+                ? { ...msg, id: data.id /* content remains plainTextContent */ }
+                : msg
+            )
+          );
+        }
+      } catch (encError) {
+        console.error("Encryption failed:", encError);
+        toast.error("Failed to encrypt message. Not sent.");
+        setMessages((prev) => prev.filter((msg) => msg.id !== tempId)); // Remove optimistic
+        setNewMessage(plainTextContent); // Restore input
       }
     });
   };
@@ -401,20 +702,40 @@ export default function ChatRoomPage({
           <span className="hidden sm:inline">Back to Find Chat</span>
           <span className="sm:hidden">Back</span>
         </Button>
-        {/* Partner Presence Indicator */}
-        {partnerId && (
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            Partner:
-            <Circle
+        <div className="flex items-center gap-4">
+          {/* Partner Presence Indicator */}
+          {partnerId && (
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+              Partner:
+              <Circle
+                className={`h-3 w-3 ${
+                  partnerPresence === "online"
+                    ? "fill-green-500 text-green-500"
+                    : "fill-gray-400 text-gray-400"
+                }`}
+              />
+              {partnerPresence}
+            </div>
+          )}
+          {/* E2EE Status Indicator */}
+          <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            <Lock
               className={`h-3 w-3 ${
-                partnerPresence === "online"
-                  ? "fill-green-500 text-green-500"
-                  : "fill-gray-400 text-gray-400"
+                encryptionStatus === "active"
+                  ? "text-green-500"
+                  : encryptionStatus === "failed"
+                  ? "text-red-500"
+                  : "text-yellow-500"
               }`}
             />
-            {partnerPresence}
+            <span>
+              {encryptionStatus === "active" && "E2E Encrypted"}
+              {encryptionStatus === "pending" && "Encryption Pending..."}
+              {encryptionStatus === "failed" && "Encryption Failed"}
+              {encryptionStatus === "inactive" && "Chat Ended"}
+            </span>
           </div>
-        )}
+        </div>
       </div>
       <div className="z-10 border rounded-lg max-w-5xl w-full h-[calc(100%-60px)] text-sm flex">
         {" "}
@@ -453,11 +774,7 @@ export default function ChatRoomPage({
                     >
                       <ChatBubble variant={variant}>
                         <ChatBubbleMessage
-                          className={`${
-                            variant === "sent"
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
-                          }`}
+                          // className is removed to let cva variants apply directly
                           isLoading={false}
                         >
                           {message.content}

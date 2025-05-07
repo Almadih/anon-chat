@@ -26,7 +26,7 @@ export default async function ProfilePage() {
   // Fetch profile data
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("mbti_type, interested_mbti_types")
+    .select("mbti_type, interested_mbti_types, public_key") // Added public_key
     .eq("id", user.id)
     .single(); // Use .single() as each user should have exactly one profile
 
@@ -71,6 +71,18 @@ export default async function ProfilePage() {
             ) : (
               <span className="text-gray-500 italic">
                 Not set / Open to all
+              </span>
+            )}
+          </p>
+          <p>
+            <span className="font-semibold text-gray-600 dark:text-gray-400">
+              Encryption Status:
+            </span>{" "}
+            {profile?.public_key ? (
+              <span className="text-green-600">Public key stored</span>
+            ) : (
+              <span className="text-orange-500 italic">
+                No public key set up
               </span>
             )}
           </p>
