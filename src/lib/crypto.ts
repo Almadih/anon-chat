@@ -181,6 +181,27 @@ export async function generateKeyFingerprint(key: CryptoKey): Promise<string> {
   return hashHex;
 }
 
+/**
+ * Maps a hexadecimal hash string to a list of emojis.
+ * @param hashHex The hexadecimal hash string.
+ * @param count The number of emojis to generate.
+ * @returns An array of emoji strings.
+ */
+export function mapHashToEmojis(hashHex: string, count: number = 6): string[] {
+  const emojis: string[] = [];
+  if (hashHex.length < count * 2) {
+    // Each emoji needs 2 hex chars (1 byte)
+    console.error("Hash too short for emoji mapping");
+    return Array(count).fill("❓"); // Return question marks if hash is too short
+  }
+
+  for (let i = 0; i < count; i++) {
+    const hexSegment = hashHex.substring(i * 2, i * 2 + 2); // Get 2 hex characters (representing 1 byte)
+    const numValue = parseInt(hexSegment, 16); // Convert hex byte to number (0-255)
+    emojis.push(EMOJI_LIST[numValue % EMOJI_LIST.length]); // Modulo ensures it's a valid index
+  }
+  return emojis;
+}
 
 // EMOJI_LIST for key fingerprint visualization
 // Sourced from a common set, ensure diversity and no ambiguous/offensive ones.
@@ -192,7 +213,7 @@ export const EMOJI_LIST = [
   "🍉",
   "🍇",
   "🍓",
-  "🫐",
+  "�",
   "🍈",
   "🍒",
   "🍑",
@@ -203,7 +224,7 @@ export const EMOJI_LIST = [
   "🍅",
   "🍆",
   "🥑",
-  "🥦",
+  "�🥦",
   "🥬",
   "🥒",
   "🌶️",
