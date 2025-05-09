@@ -6,254 +6,101 @@ import { Button } from "@/components/ui/button";
 import type { User } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation"; // Import useRouter for redirection
+import { useRouter } from "next/navigation";
+import { useUserProfileData } from "@/hooks/useUserProfileData";
+import { useMatchmaking } from "@/hooks/useMatchmaking"; // Import the new hook
 
-type FindStatus = "idle" | "searching" | "error";
+type FindStatus = "idle" | "searching" | "error" | "matched";
 
 export default function FindChatPage() {
   const supabase = createClient();
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<{
-    mbti_type: string | null;
-    interested_mbti_types: string[] | null;
-  } | null>(null);
   const [status, setStatus] = useState<FindStatus>("idle");
-  const searchIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [isFindingChat, startFindingChatTransition] = useTransition();
-  const [isCancellingSearch, startCancellingSearchTransition] = useTransition();
-  const realtimeChannelRef = useRef<any>(null); // Ref to store realtime channel
+  const [isFindingChat, startFindingChatTransition] = useTransition(); // For UI feedback on button
+  const [isCancellingSearch, startCancellingSearchTransition] = useTransition(); // For UI feedback on button
 
-  // Fetch user and profile
-  useEffect(() => {
-    const fetchUserAndProfile = async () => {
-      const {
-        data: { user: currentUser },
-      } = await supabase.auth.getUser();
-      if (!currentUser) {
-        toast.error("You must be logged in.");
-        router.push("/login"); // Redirect if not logged in
-        return;
-      }
-      setUser(currentUser);
-
-      const { data: userProfile, error: profileError } = await supabase
-        .from("profiles")
-        .select("mbti_type, interested_mbti_types")
-        .eq("id", currentUser.id)
-        .single();
-
-      if (profileError || !userProfile || !userProfile.mbti_type) {
-        toast.error("Please set your MBTI type on the profile page first.");
-        router.push("/profile"); // Redirect to profile if not set
-        return;
-      }
-      setProfile(userProfile);
-    };
-    fetchUserAndProfile();
-  }, [supabase, router]);
-
-  // Function to stop polling and unsubscribe from realtime listener
-  const stopSearchingAndCleanup = useCallback(() => {
-    if (searchIntervalRef.current) {
-      clearInterval(searchIntervalRef.current);
-      searchIntervalRef.current = null;
-      console.log("Stopped search polling.");
-    }
-    if (realtimeChannelRef.current) {
-      console.log("Unsubscribing from chat creation listener");
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
-  }, [supabase]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopSearchingAndCleanup();
-    };
-  }, [stopSearchingAndCleanup]);
-
-  // Realtime subscription for being matched
-  useEffect(() => {
-    if (status !== "searching" || !user?.id) {
-      // Ensure cleanup if status changes away from searching
-      if (realtimeChannelRef.current) stopSearchingAndCleanup();
-      return;
-    }
-
-    console.log(
-      `Setting up listener for chat creation involving user ${user.id}`
-    );
-    const channel = supabase
-      .channel(`user_match_listener_${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chats",
-          filter: `user1_id=eq.${user.id}`,
-        },
-        (payload) => {
-          console.log(`Chat creation detected (user as user1):`, payload);
-          const newChat = payload.new as { id: string };
-          stopSearchingAndCleanup();
-          toast.success("Match found!");
-          router.push(`/chat/${newChat.id}`); // Redirect to chat page
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chats",
-          filter: `user2_id=eq.${user.id}`,
-        },
-        (payload) => {
-          console.log(`Chat creation detected (user as user2):`, payload);
-          const newChat = payload.new as { id: string };
-          stopSearchingAndCleanup();
-          toast.success("Match found!");
-          router.push(`/chat/${newChat.id}`); // Redirect to chat page
-        }
-      )
-      .subscribe((subStatus, err) => {
-        if (subStatus === "SUBSCRIBED") {
-          console.log(
-            `Subscribed to chat creation listener for user ${user.id}`
-          );
-          realtimeChannelRef.current = channel; // Store channel reference
-        }
-        if (subStatus === "CHANNEL_ERROR") {
-          console.error("Chat creation listener error:", err);
-          toast.error("Error listening for matches. Please try again.");
-          setStatus("error");
-          stopSearchingAndCleanup();
-        }
-      });
-
-    // Return cleanup function
-    return () => {
-      if (realtimeChannelRef.current) {
-        console.log(
-          `Unsubscribing from chat creation listener for user ${user.id}`
-        );
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [status, user?.id, supabase, stopSearchingAndCleanup, router]);
-
-  // Find Chat Handler
-  const handleFindChat = useCallback(async () => {
-    if (!user || !profile) return; // Guard clauses
-
-    startFindingChatTransition(async () => {
-      setStatus("searching");
-      stopSearchingAndCleanup(); // Clear previous state
-
-      try {
-        // Join Queue
-        const { error: joinError } = await supabase.functions.invoke(
-          "join-queue",
-          {
-            body: {
-              mbti_type: profile.mbti_type!,
-              interested_mbti_types: profile.interested_mbti_types || [],
-            },
-          }
-        );
-        if (joinError)
-          throw new Error(`Failed to join queue: ${joinError.message}`);
-        console.log("Joined queue successfully.");
-
-        // Immediate Match Check
-        const { data: matchData, error: matchError } =
-          await supabase.functions.invoke("find-match", {
-            body: { userId: user.id },
-          });
-        if (matchError)
-          throw new Error(`Matchmaking error: ${matchError.message}`);
-
-        if (matchData?.chatId) {
-          stopSearchingAndCleanup();
-          toast.success("Match found!");
-          router.push(`/chat/${matchData.chatId}`); // Redirect immediately
-        } else {
-          // Start Polling if no immediate match
-          console.log("No immediate match found, starting polling...");
-          searchIntervalRef.current = setInterval(async () => {
-            if (!user) {
-              stopSearchingAndCleanup();
-              return;
-            } // Check user in interval
-            console.log("Polling for match...");
-            try {
-              const { data: pollData, error: pollError } =
-                await supabase.functions.invoke("find-match", {
-                  body: { userId: user.id },
-                });
-              if (pollError) {
-                console.error("Polling error:", pollError.message);
-                return;
-              }
-
-              if (pollData?.chatId) {
-                stopSearchingAndCleanup();
-                toast.success("Match found!");
-                router.push(`/chat/${pollData.chatId}`); // Redirect on poll success
-              } else {
-                console.log("Still no match found via polling.");
-              }
-            } catch (intervalError: any) {
-              console.error("Error inside polling interval:", intervalError);
-              toast.error("An error occurred while searching.");
-              setStatus("error");
-              stopSearchingAndCleanup();
-            }
-          }, 7000); // Poll every 7 seconds
-        }
-      } catch (error: any) {
-        console.error("Error finding chat:", error);
-        toast.error(error.message || "An error occurred during matchmaking.");
-        setStatus("error");
-        stopSearchingAndCleanup();
-      }
-    });
-  }, [
+  // Use the custom hook to fetch user and profile data
+  const {
     user,
     profile,
+    isLoading: isLoadingProfile,
+    // error: profileError, // Can be used if needed
+  } = useUserProfileData({ supabase, router });
+
+  // --- Matchmaking Callbacks ---
+  const handleMatchFound = useCallback(
+    (chatId: string) => {
+      toast.success("Match found!");
+      router.push(`/chat/${chatId}`);
+    },
+    [router]
+  );
+
+  const handleStatusChange = useCallback((newStatus: FindStatus) => {
+    setStatus(newStatus);
+  }, []);
+
+  const handleSearchError = useCallback((errorMessage: string) => {
+    toast.error(errorMessage);
+    setStatus("error"); // Set status to error to allow retry
+  }, []);
+
+  // Use the custom hook for matchmaking logic
+  const { startSearch, stopSearch } = useMatchmaking({
     supabase,
-    stopSearchingAndCleanup,
-    startFindingChatTransition,
-    router,
-  ]);
+    user,
+    profile,
+    onMatchFound: handleMatchFound,
+    onStatusChange: handleStatusChange,
+    onSearchError: handleSearchError,
+  });
+
+  // Cleanup on unmount - ensure stopSearch is called to clear intervals/listeners
+  useEffect(() => {
+    return () => {
+      // Call stopSearch with false to prevent calling leave-queue if the component unmounts
+      // e.g. user navigates away. leave-queue should be explicit via cancel button.
+      if (status === "searching") {
+        // Only stop if actively searching
+        stopSearch(false);
+      }
+    };
+  }, [stopSearch, status]);
+
+  // Find Chat Handler
+  const handleFindChat = useCallback(() => {
+    if (!user || !profile || !profile.mbti_type) {
+      toast.error(
+        "Please ensure your profile is complete (especially MBTI type)."
+      );
+      return;
+    }
+    startFindingChatTransition(() => {
+      startSearch(); // This is now an async function from the hook
+    });
+  }, [user, profile, startSearch, startFindingChatTransition]);
 
   // Cancel Search Handler
-  const handleCancelSearch = useCallback(async () => {
+  const handleCancelSearch = useCallback(() => {
     startCancellingSearchTransition(async () => {
-      stopSearchingAndCleanup();
-      setStatus("idle");
-      console.log("Cancelling search...");
-      try {
-        const { error } = await supabase.functions.invoke("leave-queue");
-        if (error) {
-          console.error("Error leaving queue:", error.message);
-          toast.error("Failed to leave search queue.");
-        } else {
-          toast.info("Search cancelled.");
-        }
-      } catch (cancelError: any) {
-        console.error(
-          "Error invoking leave-queue function:",
-          cancelError.message
-        );
-        toast.error("Failed to cancel search.");
-      }
+      await stopSearch(true); // true to notify leave-queue
+      // Status is set to 'idle' by stopSearch via onStatusChange
     });
-  }, [supabase, stopSearchingAndCleanup, startCancellingSearchTransition]);
+  }, [stopSearch, startCancellingSearchTransition]);
+
+  // Display loading state while user/profile data is being fetched
+  if (isLoadingProfile) {
+    return (
+      <div className="container mx-auto p-4 flex flex-col items-center justify-center pt-10 md:pt-16">
+        <Loader2 className="h-12 w-12 animate-spin text-gray-500" />
+        <p className="mt-4 text-gray-600">Loading your profile...</p>
+      </div>
+    );
+  }
+
+  // The hook useUserProfileData handles redirection if user is not logged in or profile is incomplete.
+  // If it returns a profileError and hasn't redirected, it might be a non-critical error,
+  // but the UI below should gracefully handle cases where profile might still be null.
 
   return (
     // Adjusted top padding for mobile
@@ -264,49 +111,67 @@ export default function FindChatPage() {
       </h1>
 
       {/* Display User Preferences */}
-      {profile && (
-        <div className="mb-8 p-4 border rounded-lg bg-gray-100 dark:bg-gray-800 shadow-sm w-full max-w-md text-center">
-          <h2 className="text-lg font-semibold mb-3 text-gray-700 dark:text-gray-300">
-            Your Preferences
-          </h2>
-          <p className="mb-2">
-            <span className="font-medium">Your MBTI Type:</span>{" "}
-            <span className="inline-block bg-blue-100 text-blue-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">
-              {profile.mbti_type || "Not Set"}
-            </span>
-          </p>
-          <p>
-            <span className="font-medium">Interested in Types:</span>{" "}
-            {profile.interested_mbti_types &&
-            profile.interested_mbti_types.length > 0 ? (
-              profile.interested_mbti_types.map((type) => (
-                <span
-                  key={type}
-                  className="inline-block bg-purple-100 text-purple-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-purple-900 dark:text-purple-300"
-                >
-                  {type}
-                </span>
-              ))
-            ) : (
-              <span className="text-gray-500 italic">Any</span>
-            )}
-          </p>
-          <Button
-            variant="link"
-            size="sm"
-            className="mt-2"
-            onClick={() => router.push("/profile")}
-          >
-            Change Preferences
-          </Button>
-        </div>
-      )}
+      {profile &&
+        profile.mbti_type && ( // Ensure mbti_type exists before rendering this block
+          <div className="mb-8 p-4 border rounded-lg bg-gray-100 dark:bg-gray-800 shadow-sm w-full max-w-md text-center">
+            <h2 className="text-lg font-semibold mb-3 text-gray-700 dark:text-gray-300">
+              Your Preferences
+            </h2>
+            <p className="mb-2">
+              <span className="font-medium">Your MBTI Type:</span>{" "}
+              <span className="inline-block bg-blue-100 text-blue-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">
+                {profile.mbti_type}
+              </span>
+            </p>
+            <p>
+              <span className="font-medium">Interested in Types:</span>{" "}
+              {profile.interested_mbti_types &&
+              profile.interested_mbti_types.length > 0 ? (
+                profile.interested_mbti_types.map((type) => (
+                  <span
+                    key={type}
+                    className="inline-block bg-purple-100 text-purple-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-purple-900 dark:text-purple-300"
+                  >
+                    {type}
+                  </span>
+                ))
+              ) : (
+                <span className="text-gray-500 italic">Any</span>
+              )}
+            </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="mt-2"
+              onClick={() => router.push("/profile")}
+            >
+              Change Preferences
+            </Button>
+          </div>
+        )}
+
+      {!profile?.mbti_type &&
+        !isLoadingProfile && ( // If profile is loaded but mbti_type is still missing
+          <div className="mb-8 p-4 border rounded-lg bg-yellow-50 dark:bg-yellow-900 shadow-sm w-full max-w-md text-center">
+            <p className="text-yellow-700 dark:text-yellow-300">
+              Please set your MBTI type on your profile page to start searching.
+            </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="mt-2 text-yellow-700 dark:text-yellow-300"
+              onClick={() => router.push("/profile")}
+            >
+              Go to Profile
+            </Button>
+          </div>
+        )}
 
       {/* Search Controls */}
       {status === "idle" && (
         <Button
           onClick={handleFindChat}
-          disabled={!profile || isFindingChat}
+          disabled={!profile || !profile.mbti_type || isFindingChat} // Disable if profile or mbti_type is missing
           size="lg"
         >
           {isFindingChat ? "Starting..." : "Start Searching"}
