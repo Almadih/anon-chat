@@ -51,17 +51,8 @@ export default function RootLayout({
         >
           <AppHeader /> {/* Use the new AppHeader component */}
           {/* Main content area that grows to fill available space */}
-          <main className="flex-grow container mx-auto px-4 py-8">
-            {children}
-          </main>
+          <main className="flex-grow">{children}</main>
           {/* Footer */}
-          <footer className="py-6 px-4 border-t border-border bg-card text-card-foreground flex-shrink-0">
-            {" "}
-            {/* Use theme variables */}
-            <div className="container mx-auto text-center text-sm text-muted-foreground">
-              © {new Date().getFullYear()} AnonChat MBTI. All rights reserved.
-            </div>
-          </footer>
           <Toaster richColors /> {/* Ensure Toaster is still here */}
         </ThemeProvider>
       </body>

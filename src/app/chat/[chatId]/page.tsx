@@ -848,7 +848,7 @@ export default function ChatRoomPage({
   }
 
   return (
-    <main className="flex h-[calc(93dvh)] flex-col items-center justify-center p-4 gap-4">
+    <main className="flex h-[calc(93dvh)] flex-col items-center justify-center px-4 gap-4">
       <div className="relative flex justify-between items-center max-w-5xl w-full px-2">
         {" "}
         {/* Changed to justify-between */}
