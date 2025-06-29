@@ -10,10 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  MessageCircle,
   Brain,
   Heart,
   Search,
@@ -21,18 +19,12 @@ import {
   Zap,
   CheckCircle,
   Clock,
-  ArrowRight,
-  Settings,
-  RefreshCw,
   Sparkles,
-  Target,
-  Triangle,
   TriangleAlert,
   X,
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
-import { Database } from "../../database.types";
 import { FindChatStatus, Profile, QueueEntry } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -63,7 +55,7 @@ export default function FindChat({ profile, user, queue }: Props) {
   const [isFindingChat, startFindingChatTransition] = useTransition();
   const [isCancellingSearch, startCancellingSearchTransition] = useTransition();
   const [currentStep, setCurrentStep] = useState(0);
-  const [compatibleUsers, setCompatibleUsers] = useState(23);
+  const [compatibleUsers, setCompatibleUsers] = useState(0);
   const hasKeys = useHasEncryptionKeys(profile);
 
   useEffect(() => {
@@ -71,6 +63,32 @@ export default function FindChat({ profile, user, queue }: Props) {
       handleFindChat();
     }
   }, [queue]);
+
+  useEffect(() => {
+    const channel = supabase.channel("online-users", {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    });
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const users = Object.values(state).flat();
+        setCompatibleUsers(users.length);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ online_at: new Date().toISOString() });
+        }
+      });
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, []);
 
   const handleMatchFound = useCallback(
     (chatId: string) => {

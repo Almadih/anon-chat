@@ -1,7 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirectWithToast } from "@/lib/utils";
-import { redirect } from "next/navigation";
-import { use } from "react";
 import ChatRoomPage from "./chat-page";
 
 interface Params {

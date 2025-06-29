@@ -1,17 +1,9 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useTransition,
-  use,
-} from "react";
+import { useState, useEffect, useCallback, useRef, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // Not used in current version, but keep for potential future
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,45 +17,20 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { User } from "@supabase/supabase-js";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import {
-  Loader2,
-  ArrowLeft,
-  Paperclip, // Not used
-  Mic, // Not used
+  Loader2, // Not used
   CornerDownLeft,
-  Circle, // For presence indicator
-  Lock,
+  Circle,
   Send,
   PhoneOff,
   Clock,
   Shield,
   ShieldCheck,
-  MessageCircle,
   User as UserIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  generateEncryptionKeyPair, // Not strictly needed here, but good for reference
-  exportKeyToJwk, // Not strictly needed here
-  importJwkToKey,
-  encryptData,
-  decryptData,
-  arrayBufferToBase64,
-  base64ToArrayBuffer,
-  deriveSharedKey, // Added for shared key derivation
-  generateKeyFingerprint,
-  EMOJI_LIST, // Added for safety emojis
-} from "@/lib/crypto";
-import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
-import {
-  ChatBubble,
-  ChatBubbleMessage,
-  ChatBubbleTimestamp,
-} from "@/components/ui/chat/chat-bubble";
+import { encryptData, arrayBufferToBase64 } from "@/lib/crypto";
 import { AnimatePresence, motion } from "framer-motion";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Not used yet
-import { ChatInput } from "@/components/ui/chat/chat-input";
 import { useChatInitialization } from "../../../hooks/useChatInitialization";
 import { useEncryption } from "../../../hooks/useEncryption";
 import { useMessageDecryption } from "../../../hooks/useMessageDecryption";
@@ -72,7 +39,6 @@ import { Chat, Profile } from "@/types";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatTime } from "@/lib/utils";
-import Link from "next/link";
 import AppHeader from "@/components/layout/header";
 
 // mapHashToEmojis is now imported from @/lib/crypto

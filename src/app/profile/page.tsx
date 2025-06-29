@@ -50,7 +50,7 @@ import { redirect } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import KeyPairs from "./key-pairs";
 import { Suspense } from "react";
-import Preferences from "./prefrences";
+import Preferences from "./preferences";
 import AppHeader from "@/components/layout/header";
 
 export default async function Profile() {
