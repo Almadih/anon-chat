@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import FindChatClientPage from "./find-chat-client"; // Import the new client component
+import FindChat from "./find-chat";
 // import { cookies } from "next/headers"; // No longer needed here as createClient handles it
 
 export default async function FindChatPage() {
@@ -29,7 +29,22 @@ export default async function FindChatPage() {
       redirect(`/chat/${activeChat.id}`);
     }
   }
-  // If no user is logged in, or no active chat is found (or an error occurred and we decided to proceed),
-  // render the client component to allow searching or display appropriate UI.
-  return <FindChatClientPage />;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user?.id!)
+    .single()
+    .overrideTypes<{ public_key: JsonWebKey }>();
+  if (!profile || !user) {
+    return;
+  }
+
+  const { data: queueData, error: queueError } = await supabase
+    .from("queue")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("status", "waiting")
+    .single();
+  return <FindChat profile={profile} user={user} queue={queueData} />;
 }

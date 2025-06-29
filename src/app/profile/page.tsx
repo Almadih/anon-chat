@@ -1,17 +1,59 @@
-import { Suspense } from "react";
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import { ProfileForm } from "./profile-form";
-import { ProfileStatusHandler } from "./profile-status-handler";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"; // Import Card components
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  User,
+  Mail,
+  Brain,
+  Heart,
+  Shield,
+  ShieldCheck,
+  ShieldX,
+  Key,
+  RefreshCw,
+  Edit,
+  Save,
+  X,
+  CheckCircle,
+  AlertTriangle,
+  MessageCircle,
+} from "lucide-react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { formatDate } from "@/lib/utils";
+import KeyPairs from "./key-pairs";
+import { Suspense } from "react";
+import Preferences from "./prefrences";
+import AppHeader from "@/components/layout/header";
 
-export default async function ProfilePage() {
+export default async function Profile() {
   const supabase = await createClient();
 
   const {
@@ -26,10 +68,11 @@ export default async function ProfilePage() {
   // Fetch profile data
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("mbti_type, interested_mbti_types, public_key") // Added public_key
+    .select("*") // Added public_key
     .eq("id", user.id)
-    .single(); // Use .single() as each user should have exactly one profile
-
+    .single()
+    .overrideTypes<{ public_key: JsonWebKey }>(); // Use .single() as each user should have exactly one profile
+  console.log(profile?.public_key);
   if (profileError && profileError.code !== "PGRST116") {
     // PGRST116 = 'Row not found' which is okay initially
     console.error("Error fetching profile:", profileError.message);
@@ -37,73 +80,105 @@ export default async function ProfilePage() {
   }
 
   return (
-    // Adjusted vertical padding for mobile
-    <div className="container mx-auto py-4 md:py-8 max-w-lg">
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Your Profile</CardTitle>
-          <CardDescription>
-            View your current profile information.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p>
-            <span className="font-semibold text-gray-600 dark:text-gray-400">
-              Email:
-            </span>{" "}
-            {user.email}
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+      {/* Header */}
+      <AppHeader />
+
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Profile Settings
+          </h1>
+          <p className="text-gray-600">
+            Manage your account preferences and security settings
           </p>
-          <p>
-            <span className="font-semibold text-gray-600 dark:text-gray-400">
-              Your MBTI Type:
-            </span>{" "}
-            {profile?.mbti_type || (
-              <span className="text-gray-500 italic">Not set</span>
-            )}
-          </p>
-          <p>
-            <span className="font-semibold text-gray-600 dark:text-gray-400">
-              Interested Types:
-            </span>{" "}
-            {profile?.interested_mbti_types &&
-            profile.interested_mbti_types.length > 0 ? (
-              profile.interested_mbti_types.join(", ")
-            ) : (
-              <span className="text-gray-500 italic">
-                Not set / Open to all
-              </span>
-            )}
-          </p>
-          <p>
-            <span className="font-semibold text-gray-600 dark:text-gray-400">
-              Encryption Status:
-            </span>{" "}
-            {profile?.public_key ? (
-              <span className="text-green-600">Public key stored</span>
-            ) : (
-              <span className="text-orange-500 italic">
-                No public key set up
-              </span>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Update Your Profile</CardTitle>
-          <CardDescription>
-            Set your MBTI type and preferences for matching.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Pass fetched profile data (or empty object) as initialData */}
-          <ProfileForm initialData={profile ?? undefined} />
-        </CardContent>
-      </Card>
-      {/* Add Suspense wrapper for the client component using searchParams */}
-      <Suspense fallback={null}>
-        <ProfileStatusHandler />
-      </Suspense>
+        </div>
+
+        <div className="grid gap-6">
+          {/* User Basic Info Section */}
+          <Card className="shadow-lg  bg-white/80 border-gray-100 border">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <User className="w-5 h-5 text-purple-600" />
+                <span>Basic Information</span>
+              </CardTitle>
+              <CardDescription>
+                Your account details and current MBTI profile
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3">
+                    <Mail className="w-4 h-4 text-gray-500" />
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Email
+                      </Label>
+                      <p className="text-gray-900">{user.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <Brain className="w-4 h-4 text-purple-600" />
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Your MBTI Type
+                      </Label>
+                      <div className="mt-1">
+                        <Badge className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                          {profile?.mbti_type || "Not Set"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-3">
+                    <Heart className="w-4 h-4 text-pink-600 mt-1" />
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Interested in Types
+                      </Label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {profile?.interested_mbti_types?.length == 0 ? (
+                          <Badge
+                            variant="outline"
+                            className="border-pink-200 text-pink-700"
+                          >
+                            Open To All
+                          </Badge>
+                        ) : null}
+                        {profile?.interested_mbti_types?.map((type: string) => (
+                          <Badge
+                            key={type}
+                            variant="outline"
+                            className="border-pink-200 text-pink-700"
+                          >
+                            {type}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <div className="text-sm text-gray-500">
+                      <p>Joined: {formatDate(user.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Suspense fallback={null}>
+            <Preferences preferences={profile} />
+            <KeyPairs publicKey={profile?.public_key} />
+          </Suspense>
+        </div>
+      </div>
     </div>
   );
 }

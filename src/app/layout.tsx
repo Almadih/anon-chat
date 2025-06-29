@@ -6,8 +6,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 // import Link from "next/link"; // No longer needed here if header handles all nav
 import { Toaster } from "@/components/ui/sonner"; // Import Toaster
 import "./globals.css";
-import { AppHeader } from "@/components/layout/header"; // Import AppHeader
 import { ThemeProvider } from "next-themes"; // Import ThemeProvider
+import { ToastHandler } from "./profile/toast-handler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,15 +45,16 @@ export default function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="light"
           enableSystem
           disableTransitionOnChange
         >
-          <AppHeader /> {/* Use the new AppHeader component */}
+          {/* Use the new AppHeader component */}
           {/* Main content area that grows to fill available space */}
           <main className="flex-grow">{children}</main>
           {/* Footer */}
           <Toaster richColors /> {/* Ensure Toaster is still here */}
+          <ToastHandler />
         </ThemeProvider>
       </body>
     </html>

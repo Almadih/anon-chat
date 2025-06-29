@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
-export function ProfileStatusHandler() {
+export function ToastHandler() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const nextSearchParams = new URLSearchParams(searchParams.toString());
 
   useEffect(() => {
     const successMessage = searchParams.get("success");
@@ -13,12 +17,12 @@ export function ProfileStatusHandler() {
 
     if (successMessage) {
       toast.success(successMessage);
-      // Optional: Clean the URL query params after showing the toast
-      // window.history.replaceState(null, '', '/profile');
+      nextSearchParams.delete("success");
+      router.replace(`${pathname}?${nextSearchParams}`);
     } else if (errorMessage) {
+      nextSearchParams.delete("error");
       toast.error(errorMessage);
-      // Optional: Clean the URL query params
-      // window.history.replaceState(null, '', '/profile');
+      router.replace(`${pathname}?${nextSearchParams}`);
     }
   }, [searchParams]); // Re-run effect if searchParams change
 

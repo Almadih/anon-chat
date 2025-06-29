@@ -9,6 +9,7 @@ import {
   generateKeyFingerprint,
   mapHashToEmojis, // Assuming mapHashToEmojis is moved or accessible here
 } from "@/lib/crypto";
+import { Profile } from "@/types";
 
 interface UseEncryptionProps {
   currentUserPrivateKey: CryptoKey | null;
@@ -141,4 +142,33 @@ export function useEncryption({
   }, [currentUserPrivateKey, partnerPublicKey, isChatActive, chatId]);
 
   return { sharedSecretKey, keyFingerprintEmojis, encryptionStatusUpdate };
+}
+
+
+export function useHasEncryptionKeys(profile:Profile): boolean {
+      const [hasKeys, setHasKeys] = useState(true);
+
+      useEffect(() => {
+  
+      const storedPrivateKey = localStorage.getItem("privateKeyJwk");
+    if (storedPrivateKey) {
+      try {
+        const parsedKey = JSON.parse(storedPrivateKey);
+    
+      } catch (error) {
+        setHasKeys(false);
+      }
+    }
+
+    if(!storedPrivateKey){
+      setHasKeys(false)
+    }
+
+    if(!profile.public_key){
+      setHasKeys(false)
+    }
+
+    }, [profile]);
+
+    return hasKeys;
 }

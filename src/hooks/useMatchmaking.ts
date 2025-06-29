@@ -3,20 +3,14 @@
 import { useRef, useCallback } from "react";
 import type { SupabaseClient, User, RealtimeChannel } from "@supabase/supabase-js";
 import { toast } from "sonner";
-
-type FindStatus = "idle" | "searching" | "error" | "matched";
-
-interface ProfileData {
-  mbti_type: string | null;
-  interested_mbti_types: string[] | null;
-}
+import { FindChatStatus, Profile } from "@/types";
 
 interface UseMatchmakingProps {
   supabase: SupabaseClient;
-  user: User | null;
-  profile: ProfileData | null;
+  user: User;
+  profile: Profile;
   onMatchFound: (chatId: string) => void;
-  onStatusChange: (status: FindStatus) => void;
+  onStatusChange: (status: FindChatStatus) => void;
   onSearchError: (errorMessage: string) => void;
 }
 

@@ -12,12 +12,12 @@ interface ProfileUpdateData {
 }
 
 // Define the return type for the action
-interface UpdateProfileResponse {
+interface GenericResponse {
     success: boolean;
     message: string;
 }
 
-export async function updateProfile(formData: ProfileUpdateData): Promise<UpdateProfileResponse> {
+export async function updateProfile(formData: ProfileUpdateData): Promise<GenericResponse> {
     const supabase = await createClient();
 
     const {
@@ -69,4 +69,40 @@ export async function updateProfile(formData: ProfileUpdateData): Promise<Update
     revalidatePath('/profile');
     // Return success state
     return { success: true, message: 'Profile updated successfully!' };
+}
+
+
+export async function updatePublicKey(formData:{public_key_jwk:Record<string, any>}):Promise<GenericResponse> {
+        const supabase = await createClient();
+
+    const {
+        data: { user },
+        error: userError,
+    } = await supabase.auth.getUser();
+
+    // Although this check is here, the form should ideally only be shown to logged-in users.
+    // Returning an error might be better than redirecting from an action.
+    if (userError || !user) {
+        console.error('User not authenticated for profile update');
+        // redirect('/login'); // Avoid redirecting from action on auth error
+        return { success: false, message: 'Authentication required.' };
+    }
+
+        const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+            public_key:formData.public_key_jwk
+        })
+        .eq('id', user.id);
+
+    if (updateError) {
+        console.error('Error updating profile:', updateError.message);
+        // Return an error state to the form instead of redirecting
+        return { success: false, message: `Update public key failed: ${updateError.message}` };
+    }
+
+    // Revalidate the profile page path to show updated data
+    revalidatePath('/profile');
+    // Return success state
+    return { success: true, message: 'Public key updated successfully!' };
 }
