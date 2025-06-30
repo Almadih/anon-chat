@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
+export default function Page() {
   const supabase = createClient();
   const [isLoading, setIsLoading] = useState(false); // Add loading state
 

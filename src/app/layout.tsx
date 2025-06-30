@@ -1,5 +1,3 @@
-"use client"; // Required for AppHeader which uses client hooks
-
 // import { useState } from "react"; // No longer needed here
 import { Geist, Geist_Mono } from "next/font/google";
 // import Link from "next/link"; // No longer needed here if header handles all nav
@@ -17,23 +15,13 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+export const dynamic = "force-dynamic";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Removed
-
-  // const toggleMobileMenu = () => { // Removed
-  //   setIsMobileMenuOpen(!isMobileMenuOpen);
-  // };
-
-  // // Close menu when a link is clicked (optional but good UX)
-  // const handleMobileLinkClick = () => { // Removed
-  //   setIsMobileMenuOpen(false);
-  // };
-
   return (
     // Add h-full to html and body for flex layout to work correctly
     <html lang="en" className="h-full" suppressHydrationWarning>

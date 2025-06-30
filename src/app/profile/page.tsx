@@ -16,7 +16,7 @@ import { Suspense } from "react";
 import Preferences from "./preferences";
 import AppHeader from "@/components/layout/header";
 
-export default async function Profile() {
+export default async function Page() {
   const supabase = await createClient();
 
   const {

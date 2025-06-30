@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import FindChat from "./find-chat";
+import FindChat from "./find-chat-component";
 // import { cookies } from "next/headers"; // No longer needed here as createClient handles it
 
-export default async function FindChatPage() {
+export default async function Page() {
   // const cookieStore = cookies(); // createClient from server.ts handles cookies internally
   const supabase = await createClient(); // createClient is async and doesn't take cookieStore as arg
 
@@ -52,3 +52,5 @@ export default async function FindChatPage() {
     .single();
   return <FindChat profile={profile} user={user} queue={queueData} />;
 }
+
+export const dynamic = "force-dynamic";
