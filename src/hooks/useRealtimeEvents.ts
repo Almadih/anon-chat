@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { SupabaseClient, User, RealtimeChannel } from "@supabase/supabase-js";
+import type {
+  SupabaseClient,
+  User,
+  RealtimeChannel,
+} from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { decryptData, base64ToArrayBuffer } from "@/lib/crypto";
 
@@ -44,15 +48,18 @@ export function useRealtimeEvents({
       // If essential props are missing or chat is inactive, remove all channels
       // This cleanup is important if props change making the conditions false
       const channelsToRemove: RealtimeChannel[] = [];
-      if (presenceChannelRef.current) channelsToRemove.push(presenceChannelRef.current);
+      if (presenceChannelRef.current)
+        channelsToRemove.push(presenceChannelRef.current);
       // Potentially store refs to message and chatStatus channels if they need individual removal
       // For now, removeAllChannels is a broader approach if specific refs aren't kept
       if (channelsToRemove.length > 0) {
-        Promise.all(channelsToRemove.map(channel => supabase.removeChannel(channel)))
+        Promise.all(
+          channelsToRemove.map((channel) => supabase.removeChannel(channel))
+        )
           .then(() => {
             // console.log("Cleaned up specific channels due to changed conditions/inactivity for chat:", chatId);
           })
-          .catch((error: any) => {
+          .catch((error: unknown) => {
             console.error("Error cleaning up channels:", error);
           });
         presenceChannelRef.current = null;
@@ -65,21 +72,24 @@ export function useRealtimeEvents({
 
     // --- Presence Channel Setup ---
     // Ensure existing presence channel is removed before creating a new one if dependencies change
-    if (presenceChannelRef.current && presenceChannelRef.current.topic !== `chat_presence_${chatId}`) {
-        supabase.removeChannel(presenceChannelRef.current);
-        presenceChannelRef.current = null;
+    if (
+      presenceChannelRef.current &&
+      presenceChannelRef.current.topic !== `chat_presence_${chatId}`
+    ) {
+      supabase.removeChannel(presenceChannelRef.current);
+      presenceChannelRef.current = null;
     }
-    
+
     if (!presenceChannelRef.current) {
-        presenceChannelRef.current = supabase.channel(`chat_presence_${chatId}`, {
-          config: {
-            presence: {
-              key: user.id,
-            },
+      presenceChannelRef.current = supabase.channel(`chat_presence_${chatId}`, {
+        config: {
+          presence: {
+            key: user.id,
           },
-        });
+        },
+      });
     }
-    
+
     presenceChannelRef.current
       .on("presence", { event: "sync" }, () => {
         if (presenceChannelRef.current && partnerId) {
@@ -128,7 +138,7 @@ export function useRealtimeEvents({
           if (newMessageReceived.sender_id === user.id) {
             // Optimistic updates handle user's own messages, so ignore them here
             // Or, if not using optimistic updates for own messages, decrypt and add
-            return; 
+            return;
           }
 
           if (sharedSecretKey) {
@@ -137,14 +147,28 @@ export function useRealtimeEvents({
                 sharedSecretKey,
                 base64ToArrayBuffer(newMessageReceived.content)
               );
-              onNewDecryptedMessage({ ...newMessageReceived, content: decryptedContent });
+              onNewDecryptedMessage({
+                ...newMessageReceived,
+                content: decryptedContent,
+              });
             } catch (e) {
-              console.error("Failed to decrypt incoming message with shared key:", e);
-              onNewDecryptedMessage({ ...newMessageReceived, content: "[Message undecryptable]" });
+              console.error(
+                "Failed to decrypt incoming message with shared key:",
+                e
+              );
+              onNewDecryptedMessage({
+                ...newMessageReceived,
+                content: "[Message undecryptable]",
+              });
             }
           } else {
-            console.warn("Received message but shared key is not available for decryption.");
-            onNewDecryptedMessage({ ...newMessageReceived, content: "[Decrypting... Key not ready]" });
+            console.warn(
+              "Received message but shared key is not available for decryption."
+            );
+            onNewDecryptedMessage({
+              ...newMessageReceived,
+              content: "[Decrypting... Key not ready]",
+            });
           }
         }
       )
@@ -184,25 +208,37 @@ export function useRealtimeEvents({
       const channelsToClean: RealtimeChannel[] = [];
       if (messageChannel) channelsToClean.push(messageChannel);
       if (chatStatusChannel) channelsToClean.push(chatStatusChannel);
-      
+
       // Only untrack and remove presence channel if it's currently set
       // and its topic matches the current chatId to avoid issues during rapid chatId changes.
-      if (presenceChannelRef.current && presenceChannelRef.current.topic === `chat_presence_${chatId}`) {
+      if (
+        presenceChannelRef.current &&
+        presenceChannelRef.current.topic === `chat_presence_${chatId}`
+      ) {
         const presChannel = presenceChannelRef.current;
         channelsToClean.push(presChannel); // Add for removal by removeChannels
         presenceChannelRef.current = null; // Clear the ref
         // Untrack must happen before removeChannel for presence
-        presChannel.untrack()
-          .catch((err: any) => console.error(`Error untracking presence for chat ${chatId}:`, err))
+        presChannel
+          .untrack()
+          .catch((err: unknown) =>
+            console.error(`Error untracking presence for chat ${chatId}:`, err)
+          )
           .finally(() => {
             // supabase.removeChannel(presChannel) // This will be handled by removeChannels
           });
       }
-      
+
       if (channelsToClean.length > 0) {
-        Promise.all(channelsToClean.map(channel => supabase.removeChannel(channel)))
-          .then(() => { /* console.log("Cleaned up channels for chat:", chatId); */ })
-          .catch((err: any) => console.error(`Error removing channels for chat ${chatId}:`, err));
+        Promise.all(
+          channelsToClean.map((channel) => supabase.removeChannel(channel))
+        )
+          .then(() => {
+            /* console.log("Cleaned up channels for chat:", chatId); */
+          })
+          .catch((err: unknown) =>
+            console.error(`Error removing channels for chat ${chatId}:`, err)
+          );
       }
     };
   }, [

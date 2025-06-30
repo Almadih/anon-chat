@@ -62,7 +62,7 @@ export function useEncryption({
         // setEncryptionStatusUpdate("inactive"); // This might be too aggressive if keys are present
         return;
       }
-      
+
       setEncryptionStatusUpdate("pending");
 
       try {
@@ -78,7 +78,11 @@ export function useEncryption({
               "encrypt",
               "decrypt",
             ]);
-            if (isMounted) console.log("Loaded shared key from localStorage for chat:", chatId);
+            if (isMounted)
+              console.log(
+                "Loaded shared key from localStorage for chat:",
+                chatId
+              );
           } catch (e) {
             console.warn(
               `Failed to load shared key from localStorage for chat ${chatId}, re-deriving:`,
@@ -98,7 +102,8 @@ export function useEncryption({
             `sharedKey_jwk_${chatId}`,
             JSON.stringify(exportedDerivedKeyJwk)
           );
-          if (isMounted) console.log("Derived and stored new shared key for chat:", chatId);
+          if (isMounted)
+            console.log("Derived and stored new shared key for chat:", chatId);
         }
 
         if (isMounted) {
@@ -117,7 +122,11 @@ export function useEncryption({
           }
         }
       } catch (e) {
-        console.error("Failed to derive or store shared key for chat:", chatId, e);
+        console.error(
+          "Failed to derive or store shared key for chat:",
+          chatId,
+          e
+        );
         toast.error(`Failed to establish secure session for chat ${chatId}.`);
         if (isMounted) setEncryptionStatusUpdate("failed");
       }
@@ -126,15 +135,14 @@ export function useEncryption({
     if (isChatActive && currentUserPrivateKey && partnerPublicKey && chatId) {
       initDerivedKey();
     } else if (!isChatActive) {
-        // If chat becomes inactive, clear sensitive derived keys
-        if (isMounted) {
-            setSharedSecretKey(null);
-            setKeyFingerprintEmojis(null);
-            // setEncryptionStatusUpdate("inactive"); // Status from init hook should handle this display
-            // localStorage.removeItem(`sharedKey_jwk_${chatId}`); // Optionally clear stored key on inactive
-        }
+      // If chat becomes inactive, clear sensitive derived keys
+      if (isMounted) {
+        setSharedSecretKey(null);
+        setKeyFingerprintEmojis(null);
+        // setEncryptionStatusUpdate("inactive"); // Status from init hook should handle this display
+        // localStorage.removeItem(`sharedKey_jwk_${chatId}`); // Optionally clear stored key on inactive
+      }
     }
-
 
     return () => {
       isMounted = false;
@@ -144,31 +152,28 @@ export function useEncryption({
   return { sharedSecretKey, keyFingerprintEmojis, encryptionStatusUpdate };
 }
 
+export function useHasEncryptionKeys(profile: Profile): boolean {
+  const [hasKeys, setHasKeys] = useState(true);
 
-export function useHasEncryptionKeys(profile:Profile): boolean {
-      const [hasKeys, setHasKeys] = useState(true);
-
-      useEffect(() => {
-  
-      const storedPrivateKey = localStorage.getItem("privateKeyJwk");
+  useEffect(() => {
+    const storedPrivateKey = localStorage.getItem("privateKeyJwk");
     if (storedPrivateKey) {
       try {
-        const parsedKey = JSON.parse(storedPrivateKey);
-    
-      } catch (error) {
+        JSON.parse(storedPrivateKey);
+      } catch (error: unknown) {
+        throw error;
         setHasKeys(false);
       }
     }
 
-    if(!storedPrivateKey){
-      setHasKeys(false)
+    if (!storedPrivateKey) {
+      setHasKeys(false);
     }
 
-    if(!profile.public_key){
-      setHasKeys(false)
+    if (!profile.public_key) {
+      setHasKeys(false);
     }
+  }, [profile]);
 
-    }, [profile]);
-
-    return hasKeys;
+  return hasKeys;
 }

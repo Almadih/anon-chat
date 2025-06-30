@@ -15,7 +15,7 @@ export default async function FindChatPage() {
     const userId = user.id;
 
     // Check for an active chat
-    const { data: activeChat, error: chatError } = await supabase
+    const { data: activeChat } = await supabase
       .from("chats")
       .select("id")
       .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
@@ -30,17 +30,21 @@ export default async function FindChatPage() {
     }
   }
 
+  if (!user) {
+    return;
+  }
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", user?.id!)
+    .eq("id", user?.id)
     .single()
     .overrideTypes<{ public_key: JsonWebKey }>();
   if (!profile || !user) {
     return;
   }
 
-  const { data: queueData, error: queueError } = await supabase
+  const { data: queueData } = await supabase
     .from("queue")
     .select("*")
     .eq("user_id", user.id)

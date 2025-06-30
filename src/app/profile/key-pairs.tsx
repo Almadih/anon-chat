@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/card";
 import { DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { exportKeyToJwk, generateEncryptionKeyPair } from "@/lib/crypto";
-import { formatDate } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,

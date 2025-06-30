@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -8,43 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  User,
-  Mail,
-  Brain,
-  Heart,
-  Shield,
-  ShieldCheck,
-  ShieldX,
-  Key,
-  RefreshCw,
-  Edit,
-  Save,
-  X,
-  CheckCircle,
-  AlertTriangle,
-  MessageCircle,
-} from "lucide-react";
-import Link from "next/link";
+import { User, Mail, Brain, Heart } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { formatDate } from "@/lib/utils";

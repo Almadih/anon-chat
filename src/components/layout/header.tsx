@@ -2,24 +2,15 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
-  Menu,
-  MessageSquareText,
-  UserCircle,
-  LogIn,
   LogOut,
   Search,
   MessageCircle,
-  MessageSquare,
   User as UserIcon,
   Home,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -44,28 +35,6 @@ export default function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-
-  useEffect(() => {
-    const getUser = async () => {
-      setIsAuthLoading(true);
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user);
-      setIsAuthLoading(false);
-    };
-    getUser();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-      }
-    );
-
-    return () => {
-      authListener.subscription?.unsubscribe();
-    };
-  }, [supabase]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

@@ -18,7 +18,7 @@ export const formatDate = (dateString: string) => {
 };
 
 export const redirectWithToast = (path: string, toast: ToastMessage) => {
-  let redirectPath = `${path}?${toast.type}=${encodeURIComponent(
+  const redirectPath = `${path}?${toast.type}=${encodeURIComponent(
     toast.message
   )}`;
   redirect(redirectPath);

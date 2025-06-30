@@ -1,6 +1,5 @@
 "use client"; // Required for AppHeader which uses client hooks
 
-import type { Metadata } from "next";
 // import { useState } from "react"; // No longer needed here
 import { Geist, Geist_Mono } from "next/font/google";
 // import Link from "next/link"; // No longer needed here if header handles all nav

@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { User } from "@supabase/supabase-js";
+import type { RealtimeChannel, User } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import {
   Loader2, // Not used
@@ -28,7 +28,6 @@ import {
   ShieldCheck,
   User as UserIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { encryptData, arrayBufferToBase64 } from "@/lib/crypto";
 import { AnimatePresence, motion } from "framer-motion";
 import { useChatInitialization } from "../../../hooks/useChatInitialization";
@@ -58,7 +57,6 @@ interface Props {
 
 export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
   const supabase = createClient();
-  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   // isLoading, user, partnerId, isChatActive will be managed by or initialized from useChatInitialization
@@ -69,7 +67,7 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
   const [partnerPresence, setPartnerPresence] = useState<"online" | "offline">(
     "offline"
   );
-  const [partnerId, setPartnerId] = useState<string>(partnerProfile.id); // Added this line
+  const partnerId = partnerProfile.id; // Added this line
   // currentUserPrivateKey, partnerPublicKey will be initialized by useChatInitialization
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -91,15 +89,12 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // presenceChannelRef will be managed by useRealtimeEvents hook
-  let pagePresenceChannelRef = useRef<any>(null); // Renamed to avoid conflict if hook returns a ref with same name
+  let pagePresenceChannelRef = useRef<RealtimeChannel | null>(null); // Renamed to avoid conflict if hook returns a ref with same name
 
   // Use the custom hook for chat initialization
   const {
-    isLoading: isInitializing, // Renamed to avoid conflict with component's own isLoading if any
-    user: initializedUser,
     partnerId: initializedPartnerId,
     initialPartnerPublicKey,
-    isChatActiveInitial,
     initialEncryptionStatus,
     currentUserPrivateKey: initializedCurrentUserPrivateKey,
     error: initializationError,
@@ -108,23 +103,18 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
   // Synchronize state from the initialization hook to the component's state
   useEffect(() => {
     if (initialPartnerPublicKey) setPartnerPublicKey(initialPartnerPublicKey);
-    setIsChatActive(isChatActiveInitial); // Always set, even if true by default
     if (initialEncryptionStatus) setEncryptionStatus(initialEncryptionStatus);
     if (initializedCurrentUserPrivateKey)
       setCurrentUserPrivateKey(initializedCurrentUserPrivateKey);
 
     // If there was an error during initialization that implies chat shouldn't be active
-    if (
-      initializationError &&
-      (initialEncryptionStatus === "failed" || !isChatActiveInitial)
-    ) {
+    if (initializationError && initialEncryptionStatus === "failed") {
       // Potentially set isChatActive to false here if not already handled by isChatActiveInitial
       // toast.error(`Initialization failed: ${initializationError}`); // Error is already toasted in the hook
     }
   }, [
     initializedPartnerId,
     initialPartnerPublicKey,
-    isChatActiveInitial,
     initialEncryptionStatus,
     initializedCurrentUserPrivateKey,
     initializationError,
@@ -176,8 +166,7 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
 
   // Use the custom hook for message decryption
   const {
-    decryptedMessages: initialDecryptedMessages,
-    isLoadingMessages, // Can be used for a more specific loading indicator if needed
+    decryptedMessages: initialDecryptedMessages, // Can be used for a more specific loading indicator if needed
     messageLoadingError, // Can be used to display specific message loading errors
   } = useMessageDecryption({
     sharedSecretKey,
@@ -199,7 +188,7 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
         setMessages(initialDecryptedMessages);
       }
     }
-  }, [initialDecryptedMessages]); // Added messages to dependency to allow comparison
+  }, [initialDecryptedMessages, messages]); // Added messages to dependency to allow comparison
 
   // Display error from message decryption hook
   useEffect(() => {
@@ -322,8 +311,10 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
     }, 1500);
   };
 
-  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) {
+      e.preventDefault();
+    }
     if (
       !newMessage.trim() ||
       !user ||
@@ -584,7 +575,7 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        handleSendMessage(e as any);
+                        handleSendMessage();
                       }
                     }}
                     placeholder={

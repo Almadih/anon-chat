@@ -3,12 +3,12 @@ import { redirectWithToast } from "@/lib/utils";
 import ChatRoomPage from "./chat-page";
 
 interface Params {
-  params: { chatId: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function page({ params }: Params) {
   const supabase = await createClient();
-  const { chatId } = await params;
+  const { id } = await params;
 
   const {
     data: { user },
@@ -21,10 +21,10 @@ export default async function page({ params }: Params) {
     });
   }
 
-  const { data: chat, error: chaError } = await supabase
+  const { data: chat } = await supabase
     .from("chats")
     .select("*")
-    .eq("id", chatId)
+    .eq("id", id)
     .single();
 
   if (!chat) {
@@ -44,7 +44,7 @@ export default async function page({ params }: Params) {
   const chatPartnerId =
     chat?.user1_id === user?.id ? chat?.user2_id : chat?.user1_id;
 
-  const { data: partnerProfile, error: partnerProfileError } = await supabase
+  const { data: partnerProfile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", chatPartnerId!)

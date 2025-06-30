@@ -9,9 +9,9 @@ export function ToastHandler() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const nextSearchParams = new URLSearchParams(searchParams.toString());
-
   useEffect(() => {
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+
     const successMessage = searchParams.get("success");
     const errorMessage = searchParams.get("error");
 
@@ -24,7 +24,7 @@ export function ToastHandler() {
       toast.error(errorMessage);
       router.replace(`${pathname}?${nextSearchParams}`);
     }
-  }, [searchParams]); // Re-run effect if searchParams change
+  }, [searchParams, pathname, router]); // Re-run effect if searchParams change
 
   // This component doesn't render anything itself
   return null;

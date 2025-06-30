@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -52,17 +52,9 @@ export default function FindChat({ profile, user, queue }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [isIncompleteProfile, setIsIncompleteProfile] = useState(false);
-  const [isFindingChat, startFindingChatTransition] = useTransition();
-  const [isCancellingSearch, startCancellingSearchTransition] = useTransition();
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep] = useState(0);
   const [compatibleUsers, setCompatibleUsers] = useState(0);
   const hasKeys = useHasEncryptionKeys(profile);
-
-  useEffect(() => {
-    if (queue) {
-      handleFindChat();
-    }
-  }, [queue]);
 
   useEffect(() => {
     const channel = supabase.channel("online-users", {
@@ -88,7 +80,7 @@ export default function FindChat({ profile, user, queue }: Props) {
     return () => {
       channel.unsubscribe();
     };
-  }, []);
+  }, [supabase, user.id]);
 
   const handleMatchFound = useCallback(
     (chatId: string) => {
@@ -141,16 +133,19 @@ export default function FindChat({ profile, user, queue }: Props) {
       setIsIncompleteProfile(true);
       return;
     }
-    startFindingChatTransition(() => {
-      startSearch();
-    });
-  }, [user, profile, startSearch, startFindingChatTransition]);
+
+    startSearch();
+  }, [profile, startSearch]);
+
+  useEffect(() => {
+    if (queue) {
+      handleFindChat();
+    }
+  }, [handleFindChat, queue]);
 
   const handleCancelSearch = useCallback(() => {
-    startCancellingSearchTransition(async () => {
-      await stopSearch(true);
-    });
-  }, [stopSearch, startCancellingSearchTransition]);
+    stopSearch(true);
+  }, [stopSearch]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
@@ -234,7 +229,8 @@ export default function FindChat({ profile, user, queue }: Props) {
                   <h3 className="font-semibold text-gray-900 mb-2">
                     Interested In
                   </h3>
-                  {profile.interested_mbti_types?.length! > 0 ? (
+                  {profile?.interested_mbti_types &&
+                  profile.interested_mbti_types?.length > 0 ? (
                     <div className="flex flex-wrap gap-2 justify-center">
                       {profile.interested_mbti_types?.map((type) => (
                         <Badge
@@ -400,7 +396,7 @@ export default function FindChat({ profile, user, queue }: Props) {
                       Perfect Match Found! 🎉
                     </h3>
                     <p className="text-gray-600">
-                      We found someone who's perfect for you
+                      We found someone who&apos;s perfect for you
                     </p>
                   </div>
                 </div>

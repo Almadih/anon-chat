@@ -1,7 +1,11 @@
 "use client";
 
 import { useRef, useCallback } from "react";
-import type { SupabaseClient, User, RealtimeChannel } from "@supabase/supabase-js";
+import type {
+  SupabaseClient,
+  User,
+  RealtimeChannel,
+} from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { FindChatStatus, Profile } from "@/types";
 
@@ -38,9 +42,14 @@ export function useMatchmaking({
     }
     if (realtimeChannelRef.current) {
       console.log("Removing chat creation listener channel.");
-      supabase.removeChannel(realtimeChannelRef.current)
-        .then(() => console.log("Successfully removed chat creation listener channel."))
-        .catch(err => console.error("Error removing chat creation listener channel:", err));
+      supabase
+        .removeChannel(realtimeChannelRef.current)
+        .then(() =>
+          console.log("Successfully removed chat creation listener channel.")
+        )
+        .catch((err) =>
+          console.error("Error removing chat creation listener channel:", err)
+        );
       realtimeChannelRef.current = null;
     }
   }, [supabase]);
@@ -50,18 +59,28 @@ export function useMatchmaking({
 
     // Ensure previous channel is removed if any
     if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
     }
 
-    console.log(`Setting up realtime listener for chat creation involving user ${user.id}`);
+    console.log(
+      `Setting up realtime listener for chat creation involving user ${user.id}`
+    );
     const channel = supabase
       .channel(`user_match_listener_${user.id}_${Date.now()}`) // Unique channel name
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chats", filter: `user1_id=eq.${user.id}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chats",
+          filter: `user1_id=eq.${user.id}`,
+        },
         (payload) => {
-          console.log("Realtime: Chat creation detected (user as user1):", payload);
+          console.log(
+            "Realtime: Chat creation detected (user as user1):",
+            payload
+          );
           const newChat = payload.new as { id: string };
           cleanupListeners();
           onStatusChange("matched");
@@ -70,9 +89,17 @@ export function useMatchmaking({
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chats", filter: `user2_id=eq.${user.id}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chats",
+          filter: `user2_id=eq.${user.id}`,
+        },
         (payload) => {
-          console.log("Realtime: Chat creation detected (user as user2):", payload);
+          console.log(
+            "Realtime: Chat creation detected (user as user2):",
+            payload
+          );
           const newChat = payload.new as { id: string };
           cleanupListeners();
           onStatusChange("matched");
@@ -81,7 +108,9 @@ export function useMatchmaking({
       )
       .subscribe((status, err) => {
         if (status === "SUBSCRIBED") {
-          console.log(`Subscribed to chat creation listener for user ${user.id}`);
+          console.log(
+            `Subscribed to chat creation listener for user ${user.id}`
+          );
           realtimeChannelRef.current = channel;
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error("Chat creation listener error/timeout:", err || status);
@@ -90,7 +119,14 @@ export function useMatchmaking({
         }
       });
     realtimeChannelRef.current = channel; // Assign immediately
-  }, [user?.id, supabase, cleanupListeners, onMatchFound, onSearchError, onStatusChange]);
+  }, [
+    user?.id,
+    supabase,
+    cleanupListeners,
+    onMatchFound,
+    onSearchError,
+    onStatusChange,
+  ]);
 
   const startSearch = useCallback(async () => {
     if (!user || !profile || !profile.mbti_type) {
@@ -103,23 +139,29 @@ export function useMatchmaking({
 
     try {
       console.log("Attempting to join queue...");
-      const { error: joinError } = await supabase.functions.invoke("join-queue", {
-        body: {
-          mbti_type: profile.mbti_type,
-          interested_mbti_types: profile.interested_mbti_types || [],
-        },
-      });
-      if (joinError) throw new Error(`Failed to join queue: ${joinError.message}`);
+      const { error: joinError } = await supabase.functions.invoke(
+        "join-queue",
+        {
+          body: {
+            mbti_type: profile.mbti_type,
+            interested_mbti_types: profile.interested_mbti_types || [],
+          },
+        }
+      );
+      if (joinError)
+        throw new Error(`Failed to join queue: ${joinError.message}`);
       console.log("Joined queue successfully.");
 
       setupRealtimeListener(); // Setup listener *after* joining queue
 
       console.log("Performing immediate match check...");
-      const { data: matchData, error: matchError } = await supabase.functions.invoke("find-match", {
-        body: { userId: user.id }, // Ensure userId is passed if required by your function
-      });
+      const { data: matchData, error: matchError } =
+        await supabase.functions.invoke("find-match", {
+          body: { userId: user.id }, // Ensure userId is passed if required by your function
+        });
 
-      if (matchError) throw new Error(`Matchmaking error: ${matchError.message}`);
+      if (matchError)
+        throw new Error(`Matchmaking error: ${matchError.message}`);
 
       if (matchData?.chatId) {
         console.log("Immediate match found:", matchData.chatId);
@@ -129,15 +171,17 @@ export function useMatchmaking({
       } else {
         console.log("No immediate match. Setting up polling interval...");
         searchIntervalRef.current = setInterval(async () => {
-          if (!user) { // Check user in interval, might have logged out
+          if (!user) {
+            // Check user in interval, might have logged out
             cleanupListeners();
             return;
           }
           console.log("Polling for match...");
           try {
-            const { data: pollData, error: pollError } = await supabase.functions.invoke("find-match", {
-               body: { userId: user.id }, // Ensure userId is passed
-            });
+            const { data: pollData, error: pollError } =
+              await supabase.functions.invoke("find-match", {
+                body: { userId: user.id }, // Ensure userId is passed
+              });
             if (pollError) {
               console.error("Polling error:", pollError.message);
               // Don't stop polling on transient errors, but log them.
@@ -152,16 +196,19 @@ export function useMatchmaking({
             } else {
               console.log("Still no match found via polling.");
             }
-          } catch (intervalError: any) {
-            console.error("Critical error inside polling interval:", intervalError);
+          } catch (intervalError: unknown) {
+            console.error(
+              "Critical error inside polling interval:",
+              intervalError
+            );
             onSearchError("An error occurred while searching.");
             cleanupListeners();
           }
         }, 7000); // Poll every 7 seconds
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in startSearch:", error);
-      onSearchError(error.message || "An error occurred during matchmaking.");
+      onSearchError("An error occurred during matchmaking.");
       cleanupListeners();
     }
   }, [
@@ -175,28 +222,35 @@ export function useMatchmaking({
     onSearchError,
   ]);
 
-  const stopSearch = useCallback(async (notifyLeaveQueue = true) => {
-    cleanupListeners();
-    onStatusChange("idle"); // Set status to idle after stopping
-    
-    if (notifyLeaveQueue && user) { // Only call leave-queue if user exists
-      console.log("Attempting to leave queue...");
-      try {
-        const { error } = await supabase.functions.invoke("leave-queue");
-        if (error) {
-          console.error("Error leaving queue:", error.message);
-          toast.error("Failed to leave search queue. You might have already been removed or matched.");
-        } else {
-          toast.info("Search cancelled and left queue.");
+  const stopSearch = useCallback(
+    async (notifyLeaveQueue = true) => {
+      cleanupListeners();
+      onStatusChange("idle"); // Set status to idle after stopping
+
+      if (notifyLeaveQueue && user) {
+        // Only call leave-queue if user exists
+        console.log("Attempting to leave queue...");
+        try {
+          const { error } = await supabase.functions.invoke("leave-queue");
+          if (error) {
+            console.error("Error leaving queue:", error.message);
+            toast.error(
+              "Failed to leave search queue. You might have already been removed or matched."
+            );
+          } else {
+            toast.info("Search cancelled and left queue.");
+          }
+        } catch (cancelError: unknown) {
+          console.error("Error invoking leave-queue function:");
+          console.log(cancelError);
+          toast.error("Failed to properly cancel search on the server.");
         }
-      } catch (cancelError: any) {
-        console.error("Error invoking leave-queue function:", cancelError.message);
-        toast.error("Failed to properly cancel search on the server.");
-      }
-    } else if (notifyLeaveQueue && !user) {
+      } else if (notifyLeaveQueue && !user) {
         console.log("User not available, skipping leave-queue call.");
-    }
-  }, [supabase, user, cleanupListeners, onStatusChange]);
+      }
+    },
+    [supabase, user, cleanupListeners, onStatusChange]
+  );
 
   return { startSearch, stopSearch };
 }

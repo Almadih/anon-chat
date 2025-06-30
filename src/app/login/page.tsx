@@ -4,16 +4,9 @@ import { useEffect, useState } from "react"; // Import useState
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner"; // Import toast
-import { Loader2, MessageCircle } from "lucide-react"; // Import Loader2
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"; // Import Card components
+import { MessageCircle } from "lucide-react"; // Import Loader2
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
 import Link from "next/link";
-import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {

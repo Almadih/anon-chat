@@ -191,8 +191,8 @@ export default function Preferences({ preferences }: PreferencesProps) {
                           Interested Types
                         </FormLabel>
                         <FormDescription>
-                          Select types you'd like to chat with. Leave blank to
-                          be open to all.
+                          Select types you&apos;d like to chat with. Leave blank
+                          to be open to all.
                         </FormDescription>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
