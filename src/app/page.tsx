@@ -11,7 +11,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "./auth/actions";
+import { Metadata } from "next";
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "AnonChat",
+  description: "Chat with strangers",
+};
+
 export default async function HomePage() {
   const supabase = await createClient();
 
@@ -128,6 +135,10 @@ export default async function HomePage() {
             </div>
           </div>
         </div>
+
+        <div className="absolute top-20 left-10 w-20 h-20 bg-purple-200 rounded-full opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-20 right-10 w-32 h-32 bg-pink-200 rounded-full opacity-20 animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-5 w-16 h-16 bg-purple-300 rounded-full opacity-10 animate-bounce delay-500"></div>
       </section>
 
       {/* Features Section */}

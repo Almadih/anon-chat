@@ -1,10 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirectWithToast } from "@/lib/utils";
 import ChatRoomPage from "./chat-page";
+import { Metadata } from "next";
 
 interface Params {
   params: Promise<{ chatId: string }>;
 }
+
+export const metadata: Metadata = {
+  title: "AnonChat - Chat",
+};
 
 export default async function page({ params }: Params) {
   const supabase = await createClient();

@@ -15,6 +15,11 @@ import KeyPairs from "./key-pairs";
 import { Suspense } from "react";
 import Preferences from "./preferences";
 import AppHeader from "@/components/layout/header";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "AnonChat - Profile",
+};
 
 export default async function Page() {
   const supabase = await createClient();

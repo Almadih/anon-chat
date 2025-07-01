@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import FindChat from "./find-chat-component";
-// import { cookies } from "next/headers"; // No longer needed here as createClient handles it
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "AnonChat - Find Chat",
+};
 
 export default async function Page() {
-  // const cookieStore = cookies(); // createClient from server.ts handles cookies internally
   const supabase = await createClient(); // createClient is async and doesn't take cookieStore as arg
 
   const {
