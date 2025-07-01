@@ -86,7 +86,6 @@ export function useChatInitialization({
       if (isMounted) setPartnerId(partnerProfile.id);
 
       if (!isMounted) return;
-      console.log(partnerProfile.public_key);
       if (!partnerProfile.public_key) {
         toast.error(
           "Could not retrieve partner's encryption key. Secure messaging may fail."

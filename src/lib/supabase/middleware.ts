@@ -58,7 +58,6 @@ export async function updateSession(request: NextRequest) {
     ["/profile", "/find-chat", "/chat"].includes(request.nextUrl.pathname) &&
     user.error
   ) {
-    console.log(request.nextUrl.pathname);
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

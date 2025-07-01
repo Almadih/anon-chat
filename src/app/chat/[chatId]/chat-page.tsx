@@ -188,7 +188,8 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
         setMessages(initialDecryptedMessages);
       }
     }
-  }, [initialDecryptedMessages, messages]); // Added messages to dependency to allow comparison
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDecryptedMessages]); // Added messages to dependency to allow comparison
 
   // Display error from message decryption hook
   useEffect(() => {
@@ -208,18 +209,10 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
   // --- Realtime Event Callbacks ---
   const handleNewDecryptedMessage = useCallback(
     (message: Message) => {
-      console.log("exsiting messages:", messages);
-      console.log("New  message:", message);
-      console.log("merged messages", [...messages, message]);
-      const newMessages = [...messages, message];
-      setMessages(newMessages);
+      setMessages([...messages, message]);
     },
     [messages]
   ); // No dependencies, setMessages is stable
-
-  useEffect(() => {
-    console.log("messages updated", messages);
-  }, [messages]);
 
   const handleChatEnded = useCallback(() => {
     toast.info("Chat ended.");

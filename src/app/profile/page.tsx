@@ -35,7 +35,6 @@ export default async function Page() {
     .eq("id", user.id)
     .single()
     .overrideTypes<{ public_key: JsonWebKey }>(); // Use .single() as each user should have exactly one profile
-  console.log(profile?.public_key);
   if (profileError && profileError.code !== "PGRST116") {
     // PGRST116 = 'Row not found' which is okay initially
     console.error("Error fetching profile:", profileError.message);

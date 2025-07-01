@@ -48,8 +48,6 @@ serve(async (req) => {
       throw new Error("Authentication failed.");
     }
 
-    console.log(user);
-
     // 4. Upsert user into the queue
     const { error: queueError } = await supabaseClient.from("queue").upsert(
       {

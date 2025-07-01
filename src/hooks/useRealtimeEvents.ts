@@ -134,9 +134,7 @@ export function useRealtimeEvents({
           filter: `chat_id=eq.${chatId}`,
         },
         async (payload) => {
-          console.log(payload);
           const newMessageReceived = payload.new as Message;
-          console.log(newMessageReceived.sender_id === user.id);
           if (newMessageReceived.sender_id === user.id) {
             // Optimistic updates handle user's own messages, so ignore them here
             // Or, if not using optimistic updates for own messages, decrypt and add
@@ -144,13 +142,11 @@ export function useRealtimeEvents({
           }
 
           if (sharedSecretKey) {
-            console.log("sharedSecretKey is available for decryption.");
             try {
               const decryptedContent = await decryptData(
                 sharedSecretKey,
                 base64ToArrayBuffer(newMessageReceived.content)
               );
-              console.log("Decrypted content:", decryptedContent);
               onNewDecryptedMessage({
                 ...newMessageReceived,
                 content: decryptedContent,
