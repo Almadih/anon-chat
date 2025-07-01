@@ -208,10 +208,18 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
   // --- Realtime Event Callbacks ---
   const handleNewDecryptedMessage = useCallback(
     (message: Message) => {
-      setMessages([...messages, message]);
+      console.log("exsiting messages:", messages);
+      console.log("New  message:", message);
+      console.log("merged messages", [...messages, message]);
+      const newMessages = [...messages, message];
+      setMessages(newMessages);
     },
     [messages]
   ); // No dependencies, setMessages is stable
+
+  useEffect(() => {
+    console.log("messages updated", messages);
+  }, [messages]);
 
   const handleChatEnded = useCallback(() => {
     toast.info("Chat ended.");
