@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner"; // Import Toaster
 import "./globals.css";
 import { ThemeProvider } from "next-themes"; // Import ThemeProvider
 import { ToastHandler } from "../components/ui/toast-handler";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,6 +43,7 @@ export default async function RootLayout({
           {/* Footer */}
           <Toaster richColors /> {/* Ensure Toaster is still here */}
           <ToastHandler />
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>
