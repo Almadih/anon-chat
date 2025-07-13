@@ -139,6 +139,11 @@ export default function KeyPairs({ publicKey }: { publicKey?: JsonWebKey }) {
               </div>
             </div>
             <Badge
+              className={
+                privateKeyJwk && publicKeyJwk
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }
               variant={privateKeyJwk && publicKeyJwk ? "default" : "secondary"}
             >
               {privateKeyJwk && publicKeyJwk ? "Active" : "Inactive"}

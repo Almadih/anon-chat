@@ -459,8 +459,12 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
                 }`}
               />
               <Badge
-                variant={partnerPresence === "online" ? "default" : "secondary"}
-                className="text-xs"
+                className={
+                  partnerPresence === "online"
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-700"
+                }
+                variant={partnerPresence !== "online" ? "default" : "secondary"}
               >
                 {partnerPresence}
               </Badge>
