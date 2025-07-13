@@ -4,7 +4,7 @@
 
 This project is an anonymous chat application that allows users to connect and communicate using their MBTI personality type. The application uses a combination of encryption and anonymity to ensure privacy and security.
 
-The application is built using Next.js, Tailwind CSS, and Supabase.
+The application is built using Next.js, Tailwind CSS, Shadcn UI, and Supabase.
 
 ## Getting Started
 
