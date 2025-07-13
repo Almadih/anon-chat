@@ -27,6 +27,7 @@ import {
   Shield,
   ShieldCheck,
   User as UserIcon,
+  Info,
 } from "lucide-react";
 import { encryptData, arrayBufferToBase64 } from "@/lib/crypto";
 import { AnimatePresence, motion } from "framer-motion";
@@ -39,6 +40,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { formatTime } from "@/lib/utils";
 import AppHeader from "@/components/layout/header";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
 
 // mapHashToEmojis is now imported from @/lib/crypto
 
@@ -440,7 +446,9 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
           <div className="flex items-center space-x-2">
             <div className="flex items-center space-x-1">
               <UserIcon className="w-4 h-4 text-gray-500" />
-              <span className="text-sm text-gray-600">Partner:</span>
+              <Badge className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                {partnerProfile.mbti_type}
+              </Badge>
             </div>
             <div className="flex items-center space-x-1">
               <Circle
@@ -481,23 +489,26 @@ export default function ChatRoomPage({ user, chat, partnerProfile }: Props) {
               {encryptionStatus === "failed" && "Encryption Failed"}
               {encryptionStatus === "inactive" && "Chat Ended"}
             </Badge>
+            {encryptionStatus === "active" && keyFingerprintEmojis && (
+              <Popover>
+                <PopoverTrigger>
+                  <Info className="w-4 h-4 text-gray-500" />
+                </PopoverTrigger>
+                <PopoverContent>
+                  <div className="flex space-x-1">
+                    <span>verify keys</span>
+                    <Badge variant="outline" className=" bg-green-100 ">
+                      {keyFingerprintEmojis.map((emoji, index) => (
+                        <span key={index} className="text-sm">
+                          {emoji}
+                        </span>
+                      ))}
+                    </Badge>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
-
-          {/* Key Verification */}
-          {encryptionStatus === "active" && keyFingerprintEmojis && (
-            <div className="flex items-center space-x-1 px-2 py-1 bg-green-50 rounded-md border border-green-200">
-              <span className="text-xs font-medium text-green-700">
-                Verify:
-              </span>
-              <div className="flex space-x-1">
-                {keyFingerprintEmojis.map((emoji, index) => (
-                  <span key={index} className="text-sm">
-                    {emoji}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
         <Card className="h-full shadow-md  border-gray-50 bg-white/80 overflow-hidden">
           <CardContent className="p-0 h-full flex flex-col">
